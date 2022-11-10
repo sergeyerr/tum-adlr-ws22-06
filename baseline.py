@@ -13,13 +13,16 @@ import argparse
 import json
 import random
 from collections import deque
-
+from gymnasium.wrappers import RecordVideo
 
 device = T.device('cuda' if T.cuda.is_available() else 'cpu')
 
 @hydra.main(version_base=None, config_path="conf", config_name="ddpg")
 def train(cfg : DictConfig):
     args = cfg.ddpg
+    
+    if args.record_video_on_eval:
+        from gymnasium.wrappers import RecordVideo
 
     experiment_name = args.experiment_name
 
@@ -106,15 +109,17 @@ def train(cfg : DictConfig):
                 if episode >= args.exploration:
                     action = agent.action(obs) + T.tensor(noise(), dtype=T.float, device=device)
                     action = T.clamp(action, -1.0, 1.0)
+                    action = action.detach().cpu().numpy()
                 else:
-                    action = agent.random_action()
+                    #action = agent.random_action()
+                    action = env.action_space.sample()
 
             # Take step in environment
-            new_obs, reward, done, _, _ = env.step(action.detach().cpu().numpy() * env.action_space.high)
+            new_obs, reward, done, _, _ = env.step(action * env.action_space.high)
             episode_reward += reward
 
             # Store experience
-            agent.experience(obs, action.detach().cpu().numpy(), reward, new_obs, done)
+            agent.experience(obs, action, reward, new_obs, done)
 
             # Train agent
             if counter % args.train_interval == 0:
@@ -146,19 +151,28 @@ def train(cfg : DictConfig):
         if episode % args.eval_interval == 0:
             evaluation_rewards = 0
             for evalutaion_episode in range(args.eval_eps):
-                obs, info = env.reset()
+                # TODO: specify occurencies of vids (hydra, conditional parameter)
+                # use experiment_path folder
+                if args.record_video_on_eval:
+                                        # create tmp env with videos
+                    video_path = os.path.join(experiment_path, "videos", str(episode))
+                    test_env = RecordVideo(gym.make('LunarLanderContinuous-v2', render_mode='rgb_array'), video_path)
+                else:
+                    gym.make('LunarLanderContinuous-v2')
+                obs, info = test_env.reset()
                 rewards = 0
 
                 for step in range(args.episode_length):
+                    # !!! careful with video recording, possibly delete it 
                     if args.render:
-                        env.render()
+                        test_env.render()
 
                     # Get actions
                     with T.no_grad():
                         action = agent.action(obs)
 
                     # Take step in environment
-                    new_obs, reward, done, _, _ = env.step(action.detach().cpu().numpy()  * env.action_space.high)
+                    new_obs, reward, done, _, _ = test_env.step(action.detach().cpu().numpy()  * test_env.action_space.high)
 
                     # Update obs
                     obs = new_obs
@@ -174,12 +188,13 @@ def train(cfg : DictConfig):
 
             evaluation_rewards = round(evaluation_rewards / args.eval_eps, 3)
             save_path = os.path.join(experiment_path, "saves")
+            
             agent.save_agent(save_path)
             print(f"Episode: {episode} Average evaluation reward: {evaluation_rewards} Agent saved at {save_path}")
             with open(f"{experiment_path}/evaluation_rewards.csv", "a") as f:
                 f.write(f"{episode}, {evaluation_rewards}\n")
             try:
-                if evaluation_rewards > env.spec.reward_threshold * 1.1: # x 1.1 because of small eval_episodes
+                if evaluation_rewards > test_env.spec.reward_threshold * 1.1: # x 1.1 because of small eval_episodes
                     print(f"Environment solved after {episode} episodes")
                     break
             except Exception as e:

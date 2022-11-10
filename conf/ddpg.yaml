@@ -18,4 +18,4 @@ ddpg:
   seed: 0
   env: 'LunarLanderContinuous-v2'
   experiment_name: ddpg
-  
+  record_video_on_eval: True
