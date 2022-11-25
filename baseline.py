@@ -6,8 +6,8 @@ from omegaconf import DictConfig, OmegaConf
 
 import numpy as np
 import torch as T
-from DDPGAgent import DDPGAgent
-from Noise import OrnsteinUhlenbeckActionNoise, NormalActionNoise
+from RLAgent import DDPGAgent, SACAgent, SACAgent2
+from Noise import OrnsteinUhlenbeckActionNoise, NormalActionNoise, ZeroNoise
 import os
 import argparse
 import json
@@ -17,22 +17,25 @@ from gymnasium.wrappers import RecordVideo
 
 device = T.device('cuda' if T.cuda.is_available() else 'cpu')
 
-@hydra.main(version_base=None, config_path="conf", config_name="ddpg")
+@hydra.main(version_base=None, config_path="conf", config_name="config")
 def train(cfg : DictConfig):
-    args = cfg.ddpg
+    agent_args = cfg.agent
+    env_args = cfg.env
+    validation_args = cfg.validation
+    training_args = cfg.training
     
-    if args.record_video_on_eval:
+    if validation_args.record_video_on_eval:
         from gymnasium.wrappers import RecordVideo
 
-    experiment_name = args.experiment_name
+    experiment_name = agent_args.experiment_name
 
     env = gym.make('LunarLanderContinuous-v2')
 
-    T.manual_seed(args.seed)
+    T.manual_seed(training_args.seed)
     T.backends.cudnn.deterministic = True
     T.backends.cudnn.benchmark = False
-    np.random.seed(args.seed)
-    random.seed(args.seed)
+    np.random.seed(training_args.seed)
+    random.seed(training_args.seed)
     #env.seed(args.seed)
 
     print(f"================= {'Environment Information'.center(30)} =================")
@@ -43,16 +46,29 @@ def train(cfg : DictConfig):
     print(f"Observation space shape: {env.env.observation_space.shape}")
     print(f"Observation space upper bound: {np.max(env.env.observation_space.high)}")
     print(f"Observation space lower bound: {np.min(env.env.observation_space.low)}")
-
+    
     print(f"================= {'Parameters'.center(30)} =================")
-    for k, v in args.__dict__.items():
+    print(f"================= {'Agent parameters'.center(30)} =================")
+    for k, v in agent_args.items():
+        print(f"{k:<20}: {v}")
+        
+    print(f"================= {'Training parameters'.center(30)} =================")
+    for k, v in training_args.items():
+        print(f"{k:<20}: {v}")
+        
+    print(f"================= {'Environment parameters'.center(30)} =================")
+    for k, v in env_args.items():
+        print(f"{k:<20}: {v}")
+        
+    print(f"================= {'Validation parameters'.center(30)} =================")
+    for k, v in validation_args.items():
         print(f"{k:<20}: {v}")
 
     # Experiment directory storage
     counter = 1
-    env_path = os.path.join("experiments", args.env)
+    env_path = os.path.join("experiments", env_args.env)
     if not os.path.exists(env_path):
-        os.mkdir(env_path)
+        os.makedirs(env_path)
 
     while True:
         try:
@@ -67,21 +83,31 @@ def train(cfg : DictConfig):
         OmegaConf.save(cfg, f)
 
     n_actions = env.action_space.shape[0] if type(env.action_space) == gym.spaces.box.Box else env.action_space.n
+    env_info = {"input_dims":env.observation_space.shape, "n_actions": n_actions, "max_action": env.action_space.high}
 
     # TODO: Modify this to call any other algorithm
-    algorithm = DDPGAgent
+    if agent_args.name == "ddpg":
+        algorithm = DDPGAgent
+    elif agent_args.name == "sac":
+        algorithm = SACAgent
+    elif agent_args.name == "sac2":
+        algorithm = SACAgent2
+    
 
-    agent = algorithm(args.pi_lr, args.q_lr, args.gamma, args.batch_size, args.min_replay_size, args.replay_buffer_size, args.tau,
-                      input_dims=env.observation_space.shape,
-                      n_actions=n_actions)
+    agent = algorithm(**OmegaConf.to_object(agent_args), **OmegaConf.to_object(training_args),
+                      **env_info)
 
     print(f"================= {'Noise Information'.center(30)} =================")
-    if args.gaussian_noise:
-        noise = NormalActionNoise(mean=0, sigma=args.noise_param, size=n_actions)
-        print(noise)
+    #temporary variant, possible problems with SAC
+    if env_args.noise:
+        if env_args.gaussian_noise:
+            noise = NormalActionNoise(mean=0, sigma=env_args.noise_param, size=n_actions)
+            print(noise)
+        else:
+            noise = OrnsteinUhlenbeckActionNoise(np.zeros(n_actions), sigma=env_args.noise_param)
     else:
-        noise = OrnsteinUhlenbeckActionNoise(np.zeros(n_actions), sigma=args.noise_param)
-        print(noise)
+        noise = ZeroNoise(size=n_actions)
+    print(noise)
 
     print(f"================= {'Agent Information'.center(30)} =================")
     print(agent)
@@ -91,7 +117,7 @@ def train(cfg : DictConfig):
     counter = 0
     reward_history = deque(maxlen=100)
 
-    for episode in range(args.episodes):
+    for episode in range(training_args.episodes):
         obs, info = env.reset()
         noise.reset()
         episode_reward = 0.0
@@ -99,30 +125,30 @@ def train(cfg : DictConfig):
         critic_loss = 0.0
 
         # Generate rollout and train agent
-        for step in range(args.episode_length):
+        for step in range(training_args.episode_length):
 
-            if args.render:
+            # delete it possible
+            if validation_args.render:
                 env.render()
 
             # Get actions
             with T.no_grad():
-                if episode >= args.exploration:
-                    action = agent.action(obs) + T.tensor(noise(), dtype=T.float, device=device)
-                    action = T.clamp(action, -1.0, 1.0)
-                    action = action.detach().cpu().numpy()
+                if episode >= training_args.exploration:
+                    action = agent.action(obs, addNoise=True, noise=noise)
                 else:
-                    #action = agent.random_action()
                     action = env.action_space.sample()
 
+            # TODO Ignore the "done" signal if it comes from hitting the time horizon.
+
             # Take step in environment
-            new_obs, reward, done, _, _ = env.step(action * env.action_space.high)
+            new_obs, reward, done, _, _ = env.step(action)
             episode_reward += reward
 
             # Store experience
             agent.experience(obs, action, reward, new_obs, done)
 
             # Train agent
-            if counter % args.train_interval == 0:
+            if counter > training_args.train_after and counter % training_args.train_interval == 0:
                 if agent.replay_buffer.size() > agent.min_replay_size:
                     counter = 0
                     loss = agent.train()
@@ -148,31 +174,31 @@ def train(cfg : DictConfig):
         # print(f"Actor loss: {actor_loss/(step/args.train_interval)} Critic loss: {critic_loss/(step/args.train_interval)}")
 
         # Evaluate
-        if episode % args.eval_interval == 0:
+        if episode % validation_args.eval_interval == 0:
             evaluation_rewards = 0
-            for evalutaion_episode in range(args.eval_eps):
+            for evaluation_episode in range(validation_args.eval_eps):
                 # TODO: specify occurencies of vids (hydra, conditional parameter)
                 # use experiment_path folder
-                if args.record_video_on_eval:
+                if counter > training_args.train_after and validation_args.record_video_on_eval and evaluation_episode == 0:
                                         # create tmp env with videos
                     video_path = os.path.join(experiment_path, "videos", str(episode))
                     test_env = RecordVideo(gym.make('LunarLanderContinuous-v2', render_mode='rgb_array'), video_path)
                 else:
-                    gym.make('LunarLanderContinuous-v2')
+                    test_env = gym.make('LunarLanderContinuous-v2')
                 obs, info = test_env.reset()
                 rewards = 0
 
-                for step in range(args.episode_length):
+                for step in range(validation_args.validation_episode_length):
                     # !!! careful with video recording, possibly delete it 
-                    if args.render:
+                    if validation_args.render:
                         test_env.render()
 
-                    # Get actions
+                    # Get deterministic action
                     with T.no_grad():
-                        action = agent.action(obs)
+                        action = agent.action(obs, addNoise=False)
 
                     # Take step in environment
-                    new_obs, reward, done, _, _ = test_env.step(action.detach().cpu().numpy()  * test_env.action_space.high)
+                    new_obs, reward, done, _, _ = test_env.step(action)
 
                     # Update obs
                     obs = new_obs
@@ -186,7 +212,7 @@ def train(cfg : DictConfig):
 
                 evaluation_rewards += rewards
 
-            evaluation_rewards = round(evaluation_rewards / args.eval_eps, 3)
+            evaluation_rewards = round(evaluation_rewards / validation_args.eval_eps, 3)
             save_path = os.path.join(experiment_path, "saves")
             
             agent.save_agent(save_path)
@@ -194,7 +220,7 @@ def train(cfg : DictConfig):
             with open(f"{experiment_path}/evaluation_rewards.csv", "a") as f:
                 f.write(f"{episode}, {evaluation_rewards}\n")
             try:
-                if evaluation_rewards > test_env.spec.reward_threshold * 1.1: # x 1.1 because of small eval_episodes
+                if evaluation_rewards > test_env.spec.reward_threshold * 1.1:  # x 1.1 because of small eval_episodes
                     print(f"Environment solved after {episode} episodes")
                     break
             except Exception as e:

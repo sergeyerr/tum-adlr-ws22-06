@@ -1,0 +1,6 @@
+name: "ddpg"
+pi_lr: 0.0001
+q_lr: 0.001
+gamma: 0.99
+tau: 0.005
+

@@ -1,0 +1,33 @@
+defaults:
+  - agent: sac2
+  - _self_
+
+agent:
+  experiment_name: "${agent.name}_default_env"
+
+training:
+  episodes: 10000
+  episode_length: 1000
+  exploration: 50
+  train_interval: 1
+  batch_size: 256
+  min_replay_size: 1000
+  replay_buffer_size: 10000
+  train_after: 1
+  seed: 0
+
+validation:
+  eval_eps: 5
+  eval_interval: 10
+  render: False
+  record_video_on_eval: True
+  validation_episode_length: 1000
+
+env:
+  env: 'LunarLanderContinuous-v2'
+  noise: False
+  gaussian_noise: False
+  noise_param: 0.2
+  
+  
+
