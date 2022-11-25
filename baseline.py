@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import hydra
 from omegaconf import DictConfig, OmegaConf
-
+import wandb
 import numpy as np
 import torch as T
 from RLAgent import DDPGAgent, SACAgent, SACAgent2
@@ -24,6 +24,8 @@ def train(cfg : DictConfig):
     validation_args = cfg.validation
     training_args = cfg.training
     
+
+    
     if validation_args.record_video_on_eval:
         from gymnasium.wrappers import RecordVideo
 
@@ -37,6 +39,11 @@ def train(cfg : DictConfig):
     np.random.seed(training_args.seed)
     random.seed(training_args.seed)
     #env.seed(args.seed)
+    
+    # Weights and biases initialization
+    wandb.init(project="Model tests on the non-randomized env", entity="tum-adlr-ws22-06")
+    wandb.config = OmegaConf.to_object(cfg)
+    
 
     print(f"================= {'Environment Information'.center(30)} =================")
     print(f"Action space shape: {env.env.action_space.shape}")
@@ -116,7 +123,10 @@ def train(cfg : DictConfig):
 
     counter = 0
     reward_history = deque(maxlen=100)
-
+    
+    # safe the episode, when we start to train the model (to hande epochs)
+    zero_episode = -1
+    
     for episode in range(training_args.episodes):
         obs, info = env.reset()
         noise.reset()
@@ -124,17 +134,14 @@ def train(cfg : DictConfig):
         actor_loss = 0.0
         critic_loss = 0.0
 
-        # Generate rollout and train agent
+        # Generate rollout
         for step in range(training_args.episode_length):
-
-            # delete it possible
-            if validation_args.render:
-                env.render()
 
             # Get actions
             with T.no_grad():
                 if episode >= training_args.exploration:
                     action = agent.action(obs, addNoise=True, noise=noise)
+                    #action = env.action_space.sample()
                 else:
                     action = env.action_space.sample()
 
@@ -147,18 +154,6 @@ def train(cfg : DictConfig):
             # Store experience
             agent.experience(obs, action, reward, new_obs, done)
 
-            # Train agent
-            if counter > training_args.train_after and counter % training_args.train_interval == 0:
-                if agent.replay_buffer.size() > agent.min_replay_size:
-                    counter = 0
-                    loss = agent.train()
-
-                    # Loss information kept for monitoring purposes during training
-                    actor_loss += loss['actor_loss']
-                    critic_loss += loss['critic_loss']
-
-                    agent.update()
-
             # Update obs
             obs = new_obs
 
@@ -168,65 +163,83 @@ def train(cfg : DictConfig):
             # End episode if done
             if done:
                 break
-
-        reward_history.append(episode_reward)
-        print(f"Episode: {episode} Episode reward: {episode_reward} Average reward: {np.mean(reward_history)}")
-        # print(f"Actor loss: {actor_loss/(step/args.train_interval)} Critic loss: {critic_loss/(step/args.train_interval)}")
-
-        # Evaluate
-        if episode % validation_args.eval_interval == 0:
-            evaluation_rewards = 0
-            for evaluation_episode in range(validation_args.eval_eps):
-                # TODO: specify occurencies of vids (hydra, conditional parameter)
-                # use experiment_path folder
-                if counter > training_args.train_after and validation_args.record_video_on_eval and evaluation_episode == 0:
-                                        # create tmp env with videos
-                    video_path = os.path.join(experiment_path, "videos", str(episode))
-                    test_env = RecordVideo(gym.make('LunarLanderContinuous-v2', render_mode='rgb_array'), video_path)
-                else:
-                    test_env = gym.make('LunarLanderContinuous-v2')
-                obs, info = test_env.reset()
-                rewards = 0
-
-                for step in range(validation_args.validation_episode_length):
-                    # !!! careful with video recording, possibly delete it 
-                    if validation_args.render:
-                        test_env.render()
-
-                    # Get deterministic action
-                    with T.no_grad():
-                        action = agent.action(obs, addNoise=False)
-
-                    # Take step in environment
-                    new_obs, reward, done, _, _ = test_env.step(action)
-
-                    # Update obs
-                    obs = new_obs
-
-                    # Update rewards
-                    rewards += reward
-
-                    # End episode if done
-                    if done:
-                        break
-
-                evaluation_rewards += rewards
-
-            evaluation_rewards = round(evaluation_rewards / validation_args.eval_eps, 3)
-            save_path = os.path.join(experiment_path, "saves")
             
-            agent.save_agent(save_path)
-            print(f"Episode: {episode} Average evaluation reward: {evaluation_rewards} Agent saved at {save_path}")
-            with open(f"{experiment_path}/evaluation_rewards.csv", "a") as f:
-                f.write(f"{episode}, {evaluation_rewards}\n")
-            try:
-                if evaluation_rewards > test_env.spec.reward_threshold * 1.1:  # x 1.1 because of small eval_episodes
-                    print(f"Environment solved after {episode} episodes")
-                    break
-            except Exception as e:
-                if evaluation_rewards > -120:
-                    print(f"Environment solved after {episode} episodes")
-                    break
+            
+        if episode < training_args.exploration:
+            print(f"generating episode: {episode}")
+        # Train agent (different from  spinning up, I find it more logical to separate sampling and train)
+        if episode >= training_args.exploration and agent.replay_buffer.size() > agent.min_replay_size:
+                
+            for i in range(training_args.train_batches):
+                loss = agent.train()
+                # Loss information kept for monitoring purposes during training
+                actor_loss += loss['actor_loss']
+                critic_loss += loss['critic_loss']
+                #wandb.log({"Episode": episode, "Batch": (episode) * training_args.train_batches + i,
+                          # "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
+            agent.update()
+                
+        # if we started to train the model:
+        if episode >= training_args.exploration:                
+            reward_history.append(episode_reward)
+            print(f"Episode: {episode} Episode reward: {episode_reward} Average reward: {np.mean(reward_history)}")
+           # wandb.log({"Episode": episode, "Episode reward": episode_reward, "Average reward": np.mean(reward_history)})
+        # print(f"Actor loss: {actor_loss/(step/args.train_interval)} Critic loss: {critic_loss/(step/args.train_interval)}")
+        
+            # Evaluate
+            if episode % validation_args.eval_interval == 0:
+                evaluation_rewards = 0
+                for evaluation_episode in range(validation_args.eval_eps):
+                    # TODO: specify occurencies of vids (hydra, conditional parameter)
+                    # use experiment_path folder
+                    if counter > training_args.exploration and validation_args.record_video_on_eval and evaluation_episode == 0:
+                                            # create tmp env with videos
+                        video_path = os.path.join(experiment_path, "videos", str(episode))
+                        test_env = RecordVideo(gym.make('LunarLanderContinuous-v2', render_mode='rgb_array'), video_path)
+                    else:
+                        test_env = gym.make('LunarLanderContinuous-v2')
+                    obs, info = test_env.reset()
+                    rewards = 0
+
+                    for step in range(validation_args.validation_episode_length):
+                        # !!! careful with video recording, possibly delete it 
+                        if validation_args.render:
+                            test_env.render()
+
+                        # Get deterministic action
+                        with T.no_grad():
+                            action = agent.action(obs, addNoise=False)
+
+                        # Take step in environment
+                        new_obs, reward, done, _, _ = test_env.step(action)
+
+                        # Update obs
+                        obs = new_obs
+
+                        # Update rewards
+                        rewards += reward
+
+                        # End episode if done
+                        if done:
+                            break
+
+                    evaluation_rewards += rewards
+
+                evaluation_rewards = round(evaluation_rewards / validation_args.eval_eps, 3)
+                save_path = os.path.join(experiment_path, "saves")
+                
+                agent.save_agent(save_path)
+                print(f"Episode: {episode} Average evaluation reward: {evaluation_rewards} Agent saved at {save_path}")
+                with open(f"{experiment_path}/evaluation_rewards.csv", "a") as f:
+                    f.write(f"{episode}, {evaluation_rewards}\n")
+                try:
+                    if evaluation_rewards > test_env.spec.reward_threshold * 1.1:  # x 1.1 because of small eval_episodes
+                        print(f"Environment solved after {episode} episodes")
+                        break
+                except Exception as e:
+                    if evaluation_rewards > -120:
+                        print(f"Environment solved after {episode} episodes")
+                        break
                     
                     
 if __name__=='__main__':

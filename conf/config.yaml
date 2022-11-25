@@ -1,5 +1,5 @@
 defaults:
-  - agent: sac2
+  - agent: ddpg
   - _self_
 
 agent:
@@ -9,11 +9,10 @@ training:
   episodes: 10000
   episode_length: 1000
   exploration: 50
-  train_interval: 1
+  train_batches: 5
   batch_size: 256
   min_replay_size: 1000
-  replay_buffer_size: 10000
-  train_after: 1
+  replay_buffer_size: 100000
   seed: 0
 
 validation:
@@ -25,7 +24,7 @@ validation:
 
 env:
   env: 'LunarLanderContinuous-v2'
-  noise: False
+  noise: True
   gaussian_noise: False
   noise_param: 0.2
   
