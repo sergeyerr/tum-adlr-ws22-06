@@ -1,19 +1,21 @@
-import gymnasium as gym
-import torch
-import torch.nn as nn
-import hydra
-from omegaconf import DictConfig, OmegaConf
-import wandb
-import numpy as np
-import torch as T
-from RLAgent import DDPGAgent, SACAgent, SACAgent2
-from Noise import OrnsteinUhlenbeckActionNoise, NormalActionNoise, ZeroNoise
-import os
 import argparse
 import json
+import os
 import random
 from collections import deque
+
+import gymnasium as gym
+import hydra
+import numpy as np
+import torch
+import torch as T
+import torch.nn as nn
 from gymnasium.wrappers import RecordVideo
+from omegaconf import DictConfig, OmegaConf
+
+import wandb
+from Noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, ZeroNoise
+from RLAgent import DDPGAgent, SACAgent, SACAgent2
 
 device = T.device('cuda' if T.cuda.is_available() else 'cpu')
 
@@ -175,15 +177,15 @@ def train(cfg : DictConfig):
                 # Loss information kept for monitoring purposes during training
                 actor_loss += loss['actor_loss']
                 critic_loss += loss['critic_loss']
-                #wandb.log({"Episode": episode, "Batch": (episode) * training_args.train_batches + i,
-                          # "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
+                wandb.log({"Episode": episode, "Batch": (episode) * training_args.train_batches + i,
+                           "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
             agent.update()
                 
         # if we started to train the model:
         if episode >= training_args.exploration:                
             reward_history.append(episode_reward)
             print(f"Episode: {episode} Episode reward: {episode_reward} Average reward: {np.mean(reward_history)}")
-           # wandb.log({"Episode": episode, "Episode reward": episode_reward, "Average reward": np.mean(reward_history)})
+            wandb.log({"Episode": episode, "Episode reward": episode_reward, "Average reward": np.mean(reward_history)})
         # print(f"Actor loss: {actor_loss/(step/args.train_interval)} Critic loss: {critic_loss/(step/args.train_interval)}")
         
             # Evaluate
@@ -192,12 +194,20 @@ def train(cfg : DictConfig):
                 for evaluation_episode in range(validation_args.eval_eps):
                     # TODO: specify occurencies of vids (hydra, conditional parameter)
                     # use experiment_path folder
-                    if counter > training_args.exploration and validation_args.record_video_on_eval and evaluation_episode == 0:
-                                            # create tmp env with videos
+                    if  validation_args.record_video_on_eval and evaluation_episode == 0:
+                        # create tmp env with videos
                         video_path = os.path.join(experiment_path, "videos", str(episode))
                         test_env = RecordVideo(gym.make('LunarLanderContinuous-v2', render_mode='rgb_array'), video_path)
                     else:
                         test_env = gym.make('LunarLanderContinuous-v2')
+                        
+                    # log step-action-reward plot for each validation episode
+                    if validation_args.log_actions:
+                        steps = []
+                        # first action, second action, reward
+                        actions_main = []
+                        actions_left_right = []
+                        #rewards_steps = []
                     obs, info = test_env.reset()
                     rewards = 0
 
@@ -209,6 +219,7 @@ def train(cfg : DictConfig):
                         # Get deterministic action
                         with T.no_grad():
                             action = agent.action(obs, addNoise=False)
+                            
 
                         # Take step in environment
                         new_obs, reward, done, _, _ = test_env.step(action)
@@ -218,18 +229,33 @@ def train(cfg : DictConfig):
 
                         # Update rewards
                         rewards += reward
+                        
+                        if validation_args.log_actions:
+                            steps.append(step)
+                            actions_main.append(action[0])
+                            actions_left_right.append(action[1])
+                            #rewards_steps.append(reward)
 
                         # End episode if done
                         if done:
                             break
 
                     evaluation_rewards += rewards
-
+                    # seems to save only the last plot
+                    if validation_args.log_actions and evaluation_episode == 0:
+                        wandb.log({"Validation after episode": episode, 
+                                   "Action plot" :  wandb.plot.line_series(xs=steps, ys=[actions_main, actions_left_right], keys=["Main engine", "left/right engine"], xname="step")})
+                    
+                    if validation_args.record_video_on_eval and evaluation_episode == 0:
+                        wandb.log({"Validation after episode": episode, 
+                                   "Video" : wandb.Video(os.path.join(video_path, "rl-video-episode-0.mp4"), fps=4, format="gif")})
+                    
                 evaluation_rewards = round(evaluation_rewards / validation_args.eval_eps, 3)
                 save_path = os.path.join(experiment_path, "saves")
                 
                 agent.save_agent(save_path)
                 print(f"Episode: {episode} Average evaluation reward: {evaluation_rewards} Agent saved at {save_path}")
+                wandb.log({"Validation after episode": episode,  "Average evaluation reward": evaluation_rewards})
                 with open(f"{experiment_path}/evaluation_rewards.csv", "a") as f:
                     f.write(f"{episode}, {evaluation_rewards}\n")
                 try:

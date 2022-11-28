@@ -6,7 +6,7 @@ agent:
   experiment_name: "${agent.name}_default_env"
 
 training:
-  episodes: 10000
+  episodes: 1000
   episode_length: 1000
   exploration: 50
   train_batches: 5
@@ -21,6 +21,7 @@ validation:
   render: False
   record_video_on_eval: True
   validation_episode_length: 1000
+  log_actions: True
 
 env:
   env: 'LunarLanderContinuous-v2'
