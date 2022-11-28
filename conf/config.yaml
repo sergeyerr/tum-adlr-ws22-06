@@ -9,11 +9,13 @@ training:
   episodes: 1000
   episode_length: 1000
   exploration: 50
-  train_batches: 5
-  batch_size: 256
+  train_batches: 1
+  batch_size: 64
   min_replay_size: 1000
-  replay_buffer_size: 100000
+  replay_buffer_size: 1000000
   seed: 0
+  noise: 'Gaussian' #'Zero','Gaussian', 'Ornstein'
+  noise_param: 0.2
 
 validation:
   eval_eps: 5
@@ -25,9 +27,6 @@ validation:
 
 env:
   env: 'LunarLanderContinuous-v2'
-  noise: True
-  gaussian_noise: False
-  noise_param: 0.2
   
   
 

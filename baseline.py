@@ -43,9 +43,7 @@ def train(cfg : DictConfig):
     #env.seed(args.seed)
     
     # Weights and biases initialization
-    wandb.init(project="Model tests on the non-randomized env", entity="tum-adlr-ws22-06")
-    wandb.config = OmegaConf.to_object(cfg)
-    
+    wandb.init(project="Model tests on the non-randomized env", entity="tum-adlr-ws22-06", config=OmegaConf.to_object(cfg))
 
     print(f"================= {'Environment Information'.center(30)} =================")
     print(f"Action space shape: {env.env.action_space.shape}")
@@ -74,19 +72,20 @@ def train(cfg : DictConfig):
         print(f"{k:<20}: {v}")
 
     # Experiment directory storage
-    counter = 1
     env_path = os.path.join("experiments", env_args.env)
     if not os.path.exists(env_path):
         os.makedirs(env_path)
 
+    #ugly, but acceptable
+    experiment_counter = 0
     while True:
         try:
-            experiment_path = os.path.join(env_path, f"{experiment_name}_{counter}")
+            experiment_path = os.path.join(env_path, f"{experiment_name}_{experiment_counter}")
             os.mkdir(experiment_path)
             os.mkdir(os.path.join(experiment_path, "saves"))
             break
         except FileExistsError as e:
-            counter += 1
+            experiment_counter += 1
 
     with open(os.path.join(experiment_path, 'parameters.json'), 'w') as f:
         OmegaConf.save(cfg, f)
@@ -108,15 +107,14 @@ def train(cfg : DictConfig):
 
     print(f"================= {'Noise Information'.center(30)} =================")
     #temporary variant, possible problems with SAC
-    if env_args.noise:
-        if env_args.gaussian_noise:
-            noise = NormalActionNoise(mean=0, sigma=env_args.noise_param, size=n_actions)
-            print(noise)
-        else:
-            noise = OrnsteinUhlenbeckActionNoise(np.zeros(n_actions), sigma=env_args.noise_param)
+    if training_args.noise == "normal":
+        noise = NormalActionNoise(mean=0, sigma=training_args.noise_param, size=n_actions)
+    elif training_args.noise == "Ornstein":
+        noise = OrnsteinUhlenbeckActionNoise(np.zeros(n_actions), sigma=training_args.noise_param)
     else:
-        noise = ZeroNoise(size=n_actions)
+        noise = noise = ZeroNoise(size=n_actions)
     print(noise)
+        
 
     print(f"================= {'Agent Information'.center(30)} =================")
     print(agent)
@@ -159,8 +157,6 @@ def train(cfg : DictConfig):
             # Update obs
             obs = new_obs
 
-            # Update counter
-            counter += 1
 
             # End episode if done
             if done:
