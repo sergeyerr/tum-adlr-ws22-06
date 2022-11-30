@@ -14,4 +14,4 @@ python baseline.py agent=ddpg
 
 Any key, written to an agent's configuraion, will ovewrite defaults or will be appended to them. 
 
-If you want create an agent-specific training configuration, you have to create file inside `training\` folder with the same name as the specific `agent` file, like `training\sac2.yaml`
+If you want create an agent-specific training configuration, you have to create file inside `conf\training\` folder with the same name as the specific `agent` file, like `conf\training\sac2.yaml`
