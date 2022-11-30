@@ -15,7 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 
 import wandb
 from Noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, ZeroNoise
-from RLAgent import DDPGAgent, SACAgent, SACAgent2
+from agents import DDPGAgent, SACAgent, SACAgent2
 
 device = T.device('cuda' if T.cuda.is_available() else 'cpu')
 
@@ -104,6 +104,12 @@ def train(cfg : DictConfig):
 
     agent = algorithm(**OmegaConf.to_object(agent_args), **OmegaConf.to_object(training_args),
                       **env_info)
+    
+    if validation_args.log_model_wandb:
+        # assumes that the model has only one actor, we may also log different models differently
+        wandb.watch(agent.pi, log="all", log_freq=validation_args.log_model_every_training_batch)
+        print(f"================= {f'Sending weights to W&B every {validation_args.log_model_every_training_batch} batch'} =================")
+        
 
     print(f"================= {'Noise Information'.center(30)} =================")
     #temporary variant, possible problems with SAC
@@ -112,7 +118,7 @@ def train(cfg : DictConfig):
     elif training_args.noise == "Ornstein":
         noise = OrnsteinUhlenbeckActionNoise(np.zeros(n_actions), sigma=training_args.noise_param)
     else:
-        noise = noise = ZeroNoise(size=n_actions)
+        noise = ZeroNoise(size=n_actions)
     print(noise)
         
 
@@ -124,12 +130,12 @@ def train(cfg : DictConfig):
     counter = 0
     reward_history = deque(maxlen=100)
     
-    # safe the episode, when we start to train the model (to hande epochs)
-    zero_episode = -1
+    t = 0
     
     for episode in range(training_args.episodes):
         obs, info = env.reset()
-        noise.reset()
+        if training_args.noise != "Zero":
+            noise.reset()
         episode_reward = 0.0
         actor_loss = 0.0
         critic_loss = 0.0
@@ -139,7 +145,7 @@ def train(cfg : DictConfig):
 
             # Get actions
             with T.no_grad():
-                if episode >= training_args.exploration:
+                if t >= training_args.start_steps:
                     action = agent.action(obs, addNoise=True, noise=noise)
                     #action = env.action_space.sample()
                 else:
@@ -156,112 +162,122 @@ def train(cfg : DictConfig):
 
             # Update obs
             obs = new_obs
-
-
+        
+            if t >= training_args.update_after and t % training_args.update_every == 0 and agent.replay_buffer.size() > agent.min_replay_size: 
+                for i in range(training_args.train_batches):
+                    loss = agent.train()
+                    # Loss information kept for monitoring purposes during training
+                    actor_loss += loss['actor_loss']
+                    critic_loss += loss['critic_loss']
+                    wandb.log({"Training episode": episode, "Batch": (episode) * training_args.train_batches + i,
+                            "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
+                agent.update()
+                
+            t += 1
             # End episode if done
             if done:
                 break
+        
             
-            
-        if episode < training_args.exploration:
-            print(f"generating episode: {episode}")
-        # Train agent (different from  spinning up, I find it more logical to separate sampling and train)
-        if episode >= training_args.exploration and agent.replay_buffer.size() > agent.min_replay_size:
-                
-            for i in range(training_args.train_batches):
-                loss = agent.train()
-                # Loss information kept for monitoring purposes during training
-                actor_loss += loss['actor_loss']
-                critic_loss += loss['critic_loss']
-                wandb.log({"Episode": episode, "Batch": (episode) * training_args.train_batches + i,
-                           "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
-            agent.update()
+        #if episode < training_args.exploration:
+            #print(f"generating episode: {episode}")
+        #Train agent (different from  spinning up, I find it more logical to separate sampling and train)
+        #if episode >= training_args.exploration and agent.replay_buffer.size() > agent.min_replay_size:
+        # if agent.replay_buffer.size() > agent.min_replay_size:    
+        #     for i in range(training_args.train_batches):
+        #         loss = agent.train()
+        #         # Loss information kept for monitoring purposes during training
+        #         actor_loss += loss['actor_loss']
+        #         critic_loss += loss['critic_loss']
+        #         wandb.log({"Training episode": episode, "Batch": (episode) * training_args.train_batches + i,
+        #                    "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
+        #     agent.update()
                 
         # if we started to train the model:
-        if episode >= training_args.exploration:                
-            reward_history.append(episode_reward)
-            print(f"Episode: {episode} Episode reward: {episode_reward} Average reward: {np.mean(reward_history)}")
-            wandb.log({"Episode": episode, "Episode reward": episode_reward, "Average reward": np.mean(reward_history)})
+        #if episode >= training_args.exploration:                
+        reward_history.append(episode_reward)
+        print(f"Training episode: {episode} Episode reward: {episode_reward} Average reward: {np.mean(reward_history)}")
+        wandb.log({"Training episode": episode, "Episode reward": episode_reward, "Average reward": np.mean(reward_history)})
         # print(f"Actor loss: {actor_loss/(step/args.train_interval)} Critic loss: {critic_loss/(step/args.train_interval)}")
         
             # Evaluate
-            if episode % validation_args.eval_interval == 0:
-                evaluation_rewards = 0
-                for evaluation_episode in range(validation_args.eval_eps):
-                    # TODO: specify occurencies of vids (hydra, conditional parameter)
-                    # use experiment_path folder
-                    if  validation_args.record_video_on_eval and evaluation_episode == 0:
-                        # create tmp env with videos
-                        video_path = os.path.join(experiment_path, "videos", str(episode))
-                        test_env = RecordVideo(gym.make('LunarLanderContinuous-v2', render_mode='rgb_array'), video_path)
-                    else:
-                        test_env = gym.make('LunarLanderContinuous-v2')
+        if episode % validation_args.eval_interval == 0:
+            evaluation_rewards = 0
+            for evaluation_episode in range(validation_args.eval_eps):
+                # TODO: specify occurencies of vids (hydra, conditional parameter)
+                # use experiment_path folder
+                if  validation_args.record_video_on_eval and evaluation_episode == 0:
+                    # create tmp env with videos
+                    video_path = os.path.join(experiment_path, "videos", str(episode))
+                    test_env = RecordVideo(gym.make('LunarLanderContinuous-v2', render_mode='rgb_array'), video_path)
+                else:
+                    test_env = gym.make('LunarLanderContinuous-v2')
+                    
+                # log step-action-reward plot for each validation episode
+                if validation_args.log_actions:
+                    steps = []
+                    # first action, second action, reward
+                    actions_main = []
+                    actions_left_right = []
+                    #rewards_steps = []
+                obs, info = test_env.reset()
+                rewards = 0
+
+                for step in range(validation_args.validation_episode_length):
+                    # !!! careful with video recording, possibly delete it 
+                    if validation_args.render:
+                        test_env.render()
+
+                    # Get deterministic action
+                    with T.no_grad():
+                        action = agent.action(obs, addNoise=False)
                         
-                    # log step-action-reward plot for each validation episode
+
+                    # Take step in environment
+                    new_obs, reward, done, _, _ = test_env.step(action)
+
+                    # Update obs
+                    obs = new_obs
+
+                    # Update rewards
+                    rewards += reward
+                    
                     if validation_args.log_actions:
-                        steps = []
-                        # first action, second action, reward
-                        actions_main = []
-                        actions_left_right = []
-                        #rewards_steps = []
-                    obs, info = test_env.reset()
-                    rewards = 0
+                        steps.append(step)
+                        actions_main.append(action[0])
+                        actions_left_right.append(action[1])
+                        #rewards_steps.append(reward)
 
-                    for step in range(validation_args.validation_episode_length):
-                        # !!! careful with video recording, possibly delete it 
-                        if validation_args.render:
-                            test_env.render()
+                    # End episode if done
+                    if done:
+                        break
 
-                        # Get deterministic action
-                        with T.no_grad():
-                            action = agent.action(obs, addNoise=False)
-                            
-
-                        # Take step in environment
-                        new_obs, reward, done, _, _ = test_env.step(action)
-
-                        # Update obs
-                        obs = new_obs
-
-                        # Update rewards
-                        rewards += reward
-                        
-                        if validation_args.log_actions:
-                            steps.append(step)
-                            actions_main.append(action[0])
-                            actions_left_right.append(action[1])
-                            #rewards_steps.append(reward)
-
-                        # End episode if done
-                        if done:
-                            break
-
-                    evaluation_rewards += rewards
-                    # seems to save only the last plot
-                    if validation_args.log_actions and evaluation_episode == 0:
-                        wandb.log({"Validation after episode": episode, 
-                                   "Action plot" :  wandb.plot.line_series(xs=steps, ys=[actions_main, actions_left_right], keys=["Main engine", "left/right engine"], xname="step")})
-                    
-                    if validation_args.record_video_on_eval and evaluation_episode == 0:
-                        wandb.log({"Validation after episode": episode, 
-                                   "Video" : wandb.Video(os.path.join(video_path, "rl-video-episode-0.mp4"), fps=4, format="gif")})
-                    
-                evaluation_rewards = round(evaluation_rewards / validation_args.eval_eps, 3)
-                save_path = os.path.join(experiment_path, "saves")
+                evaluation_rewards += rewards
+                # seems to save only the last plot
+                if validation_args.log_actions and evaluation_episode == 0:
+                    wandb.log({"Validation after episode": episode, 
+                                "Action plot" :  wandb.plot.line_series(xs=steps, ys=[actions_main, actions_left_right], keys=["Main engine", "left/right engine"], xname="step")})
                 
-                agent.save_agent(save_path)
-                print(f"Episode: {episode} Average evaluation reward: {evaluation_rewards} Agent saved at {save_path}")
-                wandb.log({"Validation after episode": episode,  "Average evaluation reward": evaluation_rewards})
-                with open(f"{experiment_path}/evaluation_rewards.csv", "a") as f:
-                    f.write(f"{episode}, {evaluation_rewards}\n")
-                try:
-                    if evaluation_rewards > test_env.spec.reward_threshold * 1.1:  # x 1.1 because of small eval_episodes
-                        print(f"Environment solved after {episode} episodes")
-                        break
-                except Exception as e:
-                    if evaluation_rewards > -120:
-                        print(f"Environment solved after {episode} episodes")
-                        break
+                if validation_args.record_video_on_eval and evaluation_episode == 0:
+                    wandb.log({"Validation after episode": episode, 
+                                "Video" : wandb.Video(os.path.join(video_path, "rl-video-episode-0.mp4"), fps=4, format="gif")})
+                
+            evaluation_rewards = round(evaluation_rewards / validation_args.eval_eps, 3)
+            save_path = os.path.join(experiment_path, "saves")
+            
+            agent.save_agent(save_path)
+            print(f"Episode: {episode} Average evaluation reward: {evaluation_rewards} Agent saved at {save_path}")
+            wandb.log({"Validation after episode": episode,  "Average evaluation reward": evaluation_rewards})
+            with open(f"{experiment_path}/evaluation_rewards.csv", "a") as f:
+                f.write(f"{episode}, {evaluation_rewards}\n")
+            try:
+                if evaluation_rewards > test_env.spec.reward_threshold * 1.1:  # x 1.1 because of small eval_episodes
+                    print(f"Environment solved after {episode} episodes")
+                    break
+            except Exception as e:
+                if evaluation_rewards > -120:
+                    print(f"Environment solved after {episode} episodes")
+                    break
                     
                     
 if __name__=='__main__':
