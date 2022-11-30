@@ -67,3 +67,17 @@ class OrnsteinUhlenbeckActionNoise(ActionNoise):
 
     def __repr__(self):
         return 'OrnsteinUhlenbeckActionNoise(mu={}, sigma={})'.format(self._mu, self._sigma)
+    
+
+class ZeroNoise(ActionNoise):
+    """
+    Just a zero noise
+    """
+    def __init__(self, size):
+        self._size = size
+
+    def __call__(self):
+        return np.zeros(self._size)
+
+    def __repr__(self):
+        return f"Zero noise with size {self._size}"

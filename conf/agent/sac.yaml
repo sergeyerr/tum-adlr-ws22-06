@@ -1,0 +1,6 @@
+pi_lr: 0.0003
+q_lr: 0.0003
+gamma: 0.99
+tau: 0.005
+reward_scale: 2
+name: "sac"

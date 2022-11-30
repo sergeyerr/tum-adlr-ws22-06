@@ -1,0 +1,5 @@
+# copying from the spinning up implementation
+# https://github.com/openai/spinningup/blob/master/spinup/algos/pytorch/sac/sac.py
+update_every: 50
+batch_size: 100
+noise: "Zero"

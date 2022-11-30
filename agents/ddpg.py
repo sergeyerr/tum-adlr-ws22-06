@@ -1,5 +1,6 @@
-from ReplayBuffer import ReplayBuffer
-from Networks import Actor, Critic
+import Networks
+from .ReplayBuffer import ReplayBuffer
+import Networks
 import torch
 import os
 import numpy as np
@@ -7,57 +8,54 @@ import random
 
 
 class DDPGAgent(object):
-    def __init__(self,
-                 pi_lr,
-                 q_lr,
-                 gamma,
-                 batch_size,
-                 min_replay_size,
-                 replay_buffer_size,
-                 tau,
-                 input_dims,
-                 n_actions,
-                 **kwargs):
+    def __init__(self, **kwargs):
 
         # Device
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+        self.pi_lr = kwargs["pi_lr"]
+        self.q_lr = kwargs["q_lr"]
+        self.input_dims = kwargs["input_dims"]
+        self.n_actions = kwargs["n_actions"]
+        self.max_action = kwargs["max_action"]
+
         # Neural networks
         # Policy Network
-        self.pi = Actor(alpha=pi_lr, input_dims=input_dims, n_actions=n_actions).to(self.device)
-        self.target_pi = Actor(alpha=pi_lr, input_dims=input_dims, n_actions=n_actions).to(self.device)
+        self.pi = Networks.DDPGActor(alpha=self.pi_lr, input_dims=self.input_dims, n_actions=self.n_actions).to(self.device)
+        self.target_pi = Networks.DDPGActor(alpha=self.pi_lr, input_dims=self.input_dims, n_actions=self.n_actions).to(self.device)
         self.pi_optimizer = self.pi.optimizer
 
         # Evaluation Network
-        self.q = Critic(beta=q_lr, input_dims=input_dims, n_actions=n_actions).to(self.device)
-        self.target_q = Critic(beta=q_lr,input_dims=input_dims, n_actions=n_actions).to(self.device)
+        self.q = Networks.DDPGCritic(beta=self.q_lr, input_dims=self.input_dims, n_actions=self.n_actions).to(self.device)
+        self.target_q = Networks.DDPGCritic(beta=self.q_lr, input_dims=self.input_dims, n_actions=self.n_actions).to(self.device)
         self.q_optimizer = self.q.optimizer
 
         # Sync weights
         self.sync_weights()
 
         # Replay buffer
-        self.min_replay_size = min_replay_size
-        self.replay_buffer = ReplayBuffer(replay_buffer_size)
+        self.min_replay_size = kwargs["min_replay_size"]
+        self.replay_buffer = ReplayBuffer(kwargs["replay_buffer_size"])
 
         # Constants
-        self.tau = tau
-        self.gamma = gamma
-        self.batch_size = batch_size
-        self.n_actions = n_actions
+        self.tau = kwargs["tau"]
+        self.gamma = kwargs["gamma"]
+        self.batch_size = kwargs["batch_size"]
+        #self.target_pi.requires_grad_ = False
+        #self.target_q.requires_grad_ = False
+        # self.scale = kwargs["scale"]
 
-    def action(self, observation):
+    def action(self, observation, addNoise=False, **kwargs):
         obs = torch.from_numpy(observation).type(torch.float).to(self.device)
         obs = obs.view((-1, *obs.shape))
-        return self.pi(obs)[0]
+        self.pi.eval()
+        action = self.pi(obs)[0]
+        if addNoise:
+            noise = kwargs['noise']
+            action += torch.tensor(noise(), dtype=torch.float, device=self.device)
+            action = torch.clamp(action, -1.0, 1.0)
 
-    def target_action(self, observation):
-        obs = torch.from_numpy(observation).type(torch.float).to(self.device)
-        obs = obs.view((-1, *obs.shape))
-        return self.target_pi(obs)[0]
-
-    def random_action(self):
-        return torch.FloatTensor(self.n_actions).uniform_(-1,1).to(self.device)
+        return action.detach().cpu().numpy() * self.max_action
 
     def train(self):
         # Loss statistics

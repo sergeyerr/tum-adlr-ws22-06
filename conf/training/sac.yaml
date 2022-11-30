@@ -1,0 +1,4 @@
+# from the papers
+batch_size: 256
+# we shouldn't add any noise to sac methods!
+noise: "Zero"
