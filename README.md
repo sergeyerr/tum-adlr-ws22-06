@@ -9,7 +9,7 @@ You can select the reguired agent parameters by specifying `defaults` section (i
 
 If you don't want to edit configs to run the script with the specific action - you can specify it from the run cmd:
 ```
-python baseline.py +agent=ddpg
+python baseline.py agent=ddpg
 ```
 
 Any key, written to an agent's configuraion, will ovewrite defaults or be appended to them. 
