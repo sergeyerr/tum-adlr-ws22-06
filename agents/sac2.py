@@ -38,7 +38,7 @@ class SACAgent2(SACAgent):
 
         # Bellman update using current policy and new observation
         with torch.no_grad():
-            next_action, logprobs = self.pi(new_obs) # I think you got flow of gradients wrong here
+            next_action, logprobs = self.pi.sample_normal(new_obs)
             q1_target = self.q_1_target(new_obs, next_action)
             q2_target = self.q_2_target(new_obs, next_action)
             q_target = torch.min(q1_target, q2_target)
@@ -52,7 +52,7 @@ class SACAgent2(SACAgent):
     
     def compute_loss_pi(self, obs):
         # update policy
-        action, logprobs = self.pi(obs)
+        action, logprobs = self.pi.sample_normal(obs)
         q1 = self.q_1(obs, action)
         q2 = self.q_2(obs, action)
         q = torch.min(q1, q2)
@@ -79,7 +79,6 @@ class SACAgent2(SACAgent):
         self.q_2.optimizer.zero_grad()
         loss_q = self.compute_loss_q(obs, actions, rewards, new_obs, done)
         loss_results['critic_loss'] = loss_q.data
-          
         loss_q.backward()
         self.q_1.optimizer.step()
         self.q_2.optimizer.step()
@@ -95,7 +94,6 @@ class SACAgent2(SACAgent):
         self.pi.optimizer.zero_grad()
         loss_pi = self.compute_loss_pi(obs)
         loss_results['actor_loss'] = loss_pi.data
-
         # update policy
         loss_pi.backward()
         self.pi.optimizer.step()

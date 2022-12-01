@@ -51,7 +51,7 @@ def validate(agent, validation_args, experiment_path, episode):
     for evaluation_episode in range(validation_args.eval_eps):
         # TODO: specify occurencies of vids (hydra, conditional parameter)
         # use experiment_path folder
-        if  validation_args.record_video_on_eval and evaluation_episode == 0:
+        if validation_args.record_video_on_eval and evaluation_episode == 0:
             # create tmp env with videos
             video_path = os.path.join(experiment_path, "videos", str(episode))
             test_env = RecordVideo(gym.make('LunarLanderContinuous-v2', render_mode='rgb_array'), video_path)

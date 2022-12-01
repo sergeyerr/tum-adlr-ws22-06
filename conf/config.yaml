@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - agent: sac
+  - agent: sac2
   - optional training: ${agent}
   - optional validation: ${agent}
 
