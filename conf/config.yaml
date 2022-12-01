@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - agent: sac
+  - agent: sac2
   - optional training: ${agent}
   - optional validation: ${agent}
 
@@ -9,7 +9,7 @@ agent:
   experiment_name: "${agent.name}_default_env"
 
 training:
-  episodes: 1000
+  episodes: 10000
   episode_length: 1000
   update_after: 1000
   start_steps: 1000

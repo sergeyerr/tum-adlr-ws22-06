@@ -185,15 +185,21 @@ class SACActorNetwork(nn.Module):
         prob = F.relu(prob)
 
         mu = self.mu(prob)
-        sigma = self.sigma(prob)
+        log_sigma = self.sigma(prob)
 
-        sigma = T.clamp(sigma, min=self.reparam_noise, max=1)
+        #in spinning up they clamp between -20 and 2
+        # sigma = T.clamp(log_sigma, min=self.reparam_noise, max=1)
+        log_sigma = T.clamp(log_sigma, -20, 2)
+        # in spinning up they do
+        sigma = T.exp(log_sigma)
 
         return mu, sigma
 
     def sample_normal(self, state, reparameterize=True, deterministic=False):
         mu, sigma = self.forward(state)
-        probabilities = torch.distributions.Normal(mu, sigma)
+        # in spinning up: torch.distributions.normal.Normal()
+        probabilities = torch.distributions.normal.Normal(mu, sigma)
+        # probabilities = torch.distributions.Normal(mu, sigma)
 
         if reparameterize:
             actions = probabilities.rsample()
@@ -203,9 +209,13 @@ class SACActorNetwork(nn.Module):
         if deterministic:
             actions = mu
 
+        # action = T.tanh(actions)*T.tensor(self.max_action).to(self.device)
+        # log_probs = probabilities.log_prob(actions)
+        # log_probs -= T.log(1-action.pow(2)+self.reparam_noise)
+        # log_probs = log_probs.sum(1, keepdim=True)
+        # in spinning up it is:
+        log_probs = probabilities.log_prob(actions).sum(axis=-1)
+        log_probs -= (2*(np.log(2) - actions - F.softplus(-2*actions))).sum(axis=-1)
         action = T.tanh(actions)*T.tensor(self.max_action).to(self.device)
-        log_probs = probabilities.log_prob(actions)
-        log_probs -= T.log(1-action.pow(2)+self.reparam_noise)
-        log_probs = log_probs.sum(1, keepdim=True)
 
         return action, log_probs

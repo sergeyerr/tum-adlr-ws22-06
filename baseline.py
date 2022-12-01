@@ -115,6 +115,7 @@ def train(cfg : DictConfig):
         for step in range(training_args.episode_length):
 
             # Get actions
+            # why no_grad()?
             with T.no_grad():
                 if t >= training_args.start_steps:
                     action = agent.action(obs, addNoise=True, noise=noise)

@@ -43,6 +43,7 @@ class SACAgent(object):
         obs = torch.from_numpy(observation).type(torch.float).to(self.device)
         obs = obs.view((-1, *obs.shape))
         self.pi.eval()
+        # in spinning up here is no_grad()
         if addNoise:
             actions, _ = self.pi.sample_normal(obs, reparameterize=False)
         else:
