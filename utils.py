@@ -4,7 +4,7 @@ import os
 import gymnasium as gym
 import torch as T
 import wandb
-
+from EnvironmentRandomizer import StateInjectorWrapper
 
 def print_run_info(env, agent, agent_args, training_args, env_args, validation_args, noise):
     print(f"================= {'Environment Information'.center(30)} =================")
@@ -42,7 +42,7 @@ def print_run_info(env, agent, agent_args, training_args, env_args, validation_a
     print(f"================= {'Begin Training'.center(30)} =================")
     
     
-def validate(agent, validation_args, experiment_path, episode):
+def validate(agent, validation_args, experiment_path, episode, test_env_fabric):
     '''
     doing all the validation stuff + logging
     returns, whether the env is solved
@@ -54,9 +54,10 @@ def validate(agent, validation_args, experiment_path, episode):
         if validation_args.record_video_on_eval and evaluation_episode == 0:
             # create tmp env with videos
             video_path = os.path.join(experiment_path, "videos", str(episode))
-            test_env = RecordVideo(gym.make('LunarLanderContinuous-v2', render_mode='rgb_array'), video_path)
+            test_env = RecordVideo(test_env_fabric.generate_env(), video_path)
         else:
-            test_env = gym.make('LunarLanderContinuous-v2')
+            test_env = test_env_fabric.generate_env()
+        gravity, enable_wind, wind_power, turbulence_power = test_env.gravity, test_env.enable_wind, test_env.wind_power, test_env.turbulence_power
             
         # log step-action-reward plot for each validation episode
         if validation_args.log_actions:
@@ -101,10 +102,18 @@ def validate(agent, validation_args, experiment_path, episode):
         # seems to save only the last plot
         if validation_args.log_actions and evaluation_episode == 0:
             wandb.log({"Validation after episode": episode, 
+                        "Gravity" : gravity,
+                       "Wind" : enable_wind,
+                       "Wind power" : wind_power,
+                       "Turbulence power" : turbulence_power,
                         "Action plot" :  wandb.plot.line_series(xs=steps, ys=[actions_main, actions_left_right], keys=["Main engine", "left/right engine"], xname="step")})
         
         if validation_args.record_video_on_eval and evaluation_episode == 0:
             wandb.log({"Validation after episode": episode, 
+                        "Gravity" : gravity,
+                       "Wind" : enable_wind,
+                       "Wind power" : wind_power,
+                       "Turbulence power" : turbulence_power,
                         "Video" : wandb.Video(os.path.join(video_path, "rl-video-episode-0.mp4"), fps=4, format="gif")})
         
     evaluation_rewards = round(evaluation_rewards / validation_args.eval_eps, 3)

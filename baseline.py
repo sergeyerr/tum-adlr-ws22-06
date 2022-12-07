@@ -11,6 +11,7 @@ import torch
 import torch as T
 import torch.nn as nn
 from omegaconf import DictConfig, OmegaConf
+from EnvironmentRandomizer import StateInjectorWrapper, LunarEnvFabric
 
 import wandb
 from Noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, ZeroNoise
@@ -28,13 +29,12 @@ def train(cfg : DictConfig):
     training_args = cfg.training
     
 
-    
-    if validation_args.record_video_on_eval:
-        from gymnasium.wrappers import RecordVideo
-
     experiment_name = agent_args.experiment_name
-
-    env = gym.make('LunarLanderContinuous-v2')
+    
+   # env = LunarRandomizerWrapper(pass_env_params=training_args.pass_env_parameters, **env_args)
+    train_env_fabric = LunarEnvFabric(pass_env_params=training_args.pass_env_parameters, **env_args)
+    test_env_fabric = LunarEnvFabric(pass_env_params=training_args.pass_env_parameters,  render_mode= 'rgb_array',**env_args)
+    env = train_env_fabric.generate_env()
 
     T.manual_seed(training_args.seed)
     T.backends.cudnn.deterministic = True
@@ -48,7 +48,7 @@ def train(cfg : DictConfig):
 
 
     # Experiment directory storage
-    env_path = os.path.join("experiments", env_args.env)
+    env_path = os.path.join("experiments", "LunarLanderContinuous-v2")
     if not os.path.exists(env_path):
         os.makedirs(env_path)
 
@@ -104,7 +104,9 @@ def train(cfg : DictConfig):
     t = 0
     
     for episode in range(training_args.episodes):
+        env = train_env_fabric.generate_env()
         obs, info = env.reset()
+        gravity, enable_wind, wind_power, turbulence_power = env.gravity, env.enable_wind, env.wind_power, env.turbulence_power
         if training_args.noise != "Zero":
             noise.reset()
         episode_reward = 0.0
@@ -153,9 +155,11 @@ def train(cfg : DictConfig):
                
         reward_history.append(episode_reward)
         print(f"Training episode: {episode} Episode reward: {episode_reward} Average reward: {np.mean(reward_history)}")
-        wandb.log({"Training episode": episode, "Episode reward": episode_reward, "Average reward": np.mean(reward_history)})
+        print(f"Gravity: {gravity} Wind: {enable_wind} Wind power: {wind_power} Turbulence power: {turbulence_power}")
+        wandb.log({"Training episode": episode, "Episode reward": episode_reward, "Average reward": np.mean(reward_history), 
+                   "Gravity": gravity, "Wind": enable_wind, "Wind power": wind_power, "Turbulence power": turbulence_power})
         if episode % validation_args.eval_interval == 0:
-            solved = validate(agent, validation_args, experiment_path, episode)
+            solved = validate(agent, validation_args, experiment_path, episode, test_env_fabric)
             if solved:
                 break
                     
