@@ -1,5 +1,4 @@
-import Networks
-from .ReplayBuffer import ReplayBuffer
+from DataHandling.ReplayBuffer import ReplayBuffer
 import Networks
 import torch
 import os

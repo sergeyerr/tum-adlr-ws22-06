@@ -111,6 +111,9 @@ def train(cfg : DictConfig):
         actor_loss = 0.0
         critic_loss = 0.0
 
+    # TODO I think the episode length is not long enough for sac to learn to land. The agent only learns
+    #  to hover above the ground. Or I fucked up the sac while fixing sac2, because they share logic
+
         # Generate rollout
         for step in range(training_args.episode_length):
 

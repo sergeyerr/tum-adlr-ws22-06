@@ -1,10 +1,8 @@
-import Networks
-from .ReplayBuffer import ReplayBuffer
+from DataHandling.ReplayBuffer import ReplayBuffer
 import Networks
 import torch
 import os
 import numpy as np
-import random
 
 
 class DDPGAgent(object):

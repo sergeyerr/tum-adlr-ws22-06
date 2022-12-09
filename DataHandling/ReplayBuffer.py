@@ -26,5 +26,27 @@ class ReplayBuffer(object):
         out_dict['d'] = np.array(out_dict['d'])
         return out_dict
 
+    def clear(self):
+        self.queue.clear()
     def size(self):
         return len(self.queue)
+
+
+class MultiTaskReplayBuffer(object):
+
+    def __init__(self, capacity, env, num_tasks):
+        self.capacity = capacity
+        self.env = env
+        self.num_tasks = num_tasks
+        self.task_buffers = dict([(idx, ReplayBuffer(capacity)) for idx in num_tasks])
+
+    def record(self, task_id, obs, action, reward, new_obs, done):
+        self.task_buffers[task_id].record(obs, action, reward, new_obs, done)
+
+    def random_batch(self, task_id, batch_size):
+        self.task_buffers[task_id].get_batch(batch_size)
+
+    def clear_buffer(self, task_id):
+        self.task_buffers[task_id].clear()
+
+
