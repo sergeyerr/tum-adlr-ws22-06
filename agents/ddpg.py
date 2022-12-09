@@ -115,7 +115,7 @@ class DDPGAgent(object):
     def experience(self, o, a, r, o2, d):
         self.replay_buffer.record(o, a, r, o2, d)
 
-    def update(self):
+    def update_target_network(self):
         with torch.no_grad():
             for pi_param, target_pi_param in zip(self.pi.parameters(), self.target_pi.parameters()):
                 target_pi_param.data = (1.0 - self.tau) * target_pi_param.data + self.tau * pi_param.data

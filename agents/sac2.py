@@ -104,7 +104,7 @@ class SACAgent2(SACAgent):
 
         return loss_results
 
-    def update(self):
+    def update_target_network(self):
 
         with torch.no_grad():
             for q1_param, target_q1_param in zip(self.q_1.parameters(), self.q_1_target.parameters()):

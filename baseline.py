@@ -97,12 +97,10 @@ def train(cfg : DictConfig):
         
     print_run_info(env, agent, agent_args, training_args, env_args, validation_args, noise)
 
-
-    counter = 0
     reward_history = deque(maxlen=100)
-    
+
     t = 0
-    
+
     for episode in range(training_args.episodes):
         env = train_env_fabric.generate_env()
         obs, info = env.reset()
@@ -148,7 +146,8 @@ def train(cfg : DictConfig):
                     critic_loss += loss['critic_loss']
                     wandb.log({"Training episode": episode, "Batch": (episode) * training_args.train_batches + i,
                             "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
-                agent.update()
+                agent.update_target_network()
+
                 
             t += 1
             # End episode if done
@@ -165,7 +164,7 @@ def train(cfg : DictConfig):
             solved = validate(agent, validation_args, experiment_path, episode, test_env_fabric)
             if solved:
                 break
-                    
-                    
+
+
 if __name__=='__main__':
     train()

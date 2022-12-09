@@ -121,7 +121,7 @@ class SACAgent(object):
     def experience(self, o, a, r, o2, d):
         self.replay_buffer.record(o, a, r, o2, d)
 
-    def update(self):
+    def update_target_network(self):
         with torch.no_grad():
             for value_param, target_value_param in zip(self.value.parameters(), self.target_value.parameters()):
                 target_value_param.data = (1.0 - self.tau) * target_value_param.data + self.tau * value_param.data

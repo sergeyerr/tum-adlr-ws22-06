@@ -1,5 +1,7 @@
 # this calls will create rollouts of agent for specific task
 import numpy as np
+
+
 class Sampler(object):
 
     # this sampler will use the current policy and environment/task to create rollout
@@ -22,7 +24,7 @@ class Sampler(object):
         n_steps_total = 0
         n_trajs = 0
         while n_steps_total < max_samples and n_trajs < max_trajs:
-            path = self.rollout( self.env, policy, max_path_length=self.max_path_length, accum_context=accum_context)
+            path = self.rollout(self.env, policy, max_path_length=self.max_path_length, accum_context=accum_context)
             # save the latent context that generated this trajectory
             path['context'] = policy.z.detach().cpu().numpy()
             paths.append(path)
@@ -33,10 +35,7 @@ class Sampler(object):
                 policy.sample_z()
         return paths, n_steps_total
 
-    def rollout(self, env, policy, max_path_length, accum_context=True):
-        pass
-
-    def rollout(env, agent, max_path_length=np.inf, accum_context=True, animated=False, save_frames=False):
+    def rollout(self, env, agent, max_path_length=np.inf, accum_context=True):
         """
         The following value for the following keys will be a 2D array, with the
         first dimension corresponding to the time dimension.
@@ -67,10 +66,8 @@ class Sampler(object):
         next_o = None
         path_length = 0
 
-        if animated:
-            env.render()
         while path_length < max_path_length:
-            a, agent_info = agent.get_action(o)
+            a = agent.get_action(o)
             next_o, r, d, env_info = env.step(a)
             # update the agent's current context
             if accum_context:
@@ -79,16 +76,8 @@ class Sampler(object):
             rewards.append(r)
             terminals.append(d)
             actions.append(a)
-            agent_infos.append(agent_info)
             path_length += 1
             o = next_o
-            if animated:
-                env.render()
-            if save_frames:
-                from PIL import Image
-                image = Image.fromarray(np.flipud(env.get_image()))
-                env_info['frame'] = image
-            env_infos.append(env_info)
             if d:
                 break
 
