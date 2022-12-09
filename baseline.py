@@ -11,7 +11,7 @@ import torch
 import torch as T
 import torch.nn as nn
 from omegaconf import DictConfig, OmegaConf
-from EnvironmentRandomizer import StateInjectorWrapper, LunarEnvFabric
+from EnvironmentRandomizer import StateInjectorWrapper, LunarEnvRandomFabric, LunarEnvFixedFabric, LunarEnvHypercubeFabric
 
 import wandb
 from Noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, ZeroNoise
@@ -32,8 +32,18 @@ def train(cfg : DictConfig):
     experiment_name = agent_args.experiment_name
     
    # env = LunarRandomizerWrapper(pass_env_params=training_args.pass_env_parameters, **env_args)
-    train_env_fabric = LunarEnvFabric(pass_env_params=training_args.pass_env_parameters, **env_args)
-    test_env_fabric = LunarEnvFabric(pass_env_params=training_args.pass_env_parameters,  render_mode= 'rgb_array',**env_args)
+    if env_args.random:
+        train_env_fabric = LunarEnvRandomFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters)
+        if validation_args.hypercube_validation:
+            test_env_fabric = LunarEnvHypercubeFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters,  
+                                                      render_mode= 'rgb_array', points_per_axis=validation_args.hypercube_points_per_axis)
+            validation_args.eval_eps = test_env_fabric.number_of_test_points()
+        else:
+            test_env_fabric = LunarEnvRandomFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters,
+                                                   render_mode= 'rgb_array')
+    else:
+        train_env_fabric = LunarEnvFixedFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters)
+        test_env_fabric = LunarEnvFixedFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters,  render_mode= 'rgb_array')
     env = train_env_fabric.generate_env()
 
     T.manual_seed(training_args.seed)
@@ -44,7 +54,7 @@ def train(cfg : DictConfig):
     #env.seed(args.seed)
     
     # Weights and biases initialization
-    wandb.init(project="Model tests on the non-randomized env", entity="tum-adlr-ws22-06", config=OmegaConf.to_object(cfg))
+    wandb.init(project="ADLR randomized envs", entity="tum-adlr-ws22-06", config=OmegaConf.to_object(cfg))
 
 
     # Experiment directory storage
