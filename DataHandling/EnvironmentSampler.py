@@ -9,6 +9,7 @@ class Sampler(object):
 
     def __init__(self, env, policy, max_path_length):
         self.env = env
+        # don't forget to update policy when it is changed
         self.policy = policy
         self.max_path_length = max_path_length
 

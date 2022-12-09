@@ -11,7 +11,7 @@ import torch
 import torch as T
 import torch.nn as nn
 from omegaconf import DictConfig, OmegaConf
-from EnvironmentRandomizer import StateInjectorWrapper, LunarEnvFabric
+from EnvironmentUtils import LunarEnvRandomFabric, LunarEnvFixedFabric, LunarEnvHypercubeFabric
 from DataHandling.EnvironmentSampler import Sampler
 
 import wandb
@@ -30,20 +30,29 @@ class PEARLExperiment(object):
         self.validation_args = cfg.validation
         self.training_args = cfg.training
 
-
 @hydra.main(version_base=None, config_path="conf", config_name="config")
-def train(cfg: DictConfig):
+def train(cfg : DictConfig):
     agent_args = cfg.agent
     env_args = cfg.env
     validation_args = cfg.validation
     training_args = cfg.training
+    
 
     experiment_name = agent_args.experiment_name
-
-    # env = LunarRandomizerWrapper(pass_env_params=training_args.pass_env_parameters, **env_args)
-    train_env_fabric = LunarEnvFabric(pass_env_params=training_args.pass_env_parameters, **env_args)
-    test_env_fabric = LunarEnvFabric(pass_env_params=training_args.pass_env_parameters, render_mode='rgb_array',
-                                     **env_args)
+    
+   # env = LunarRandomizerWrapper(pass_env_params=training_args.pass_env_parameters, **env_args)
+    if env_args.random:
+        train_env_fabric = LunarEnvRandomFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters)
+        if validation_args.hypercube_validation:
+            test_env_fabric = LunarEnvHypercubeFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters,  
+                                                      render_mode= 'rgb_array', points_per_axis=validation_args.hypercube_points_per_axis)
+            validation_args.eval_eps = test_env_fabric.number_of_test_points()
+        else:
+            test_env_fabric = LunarEnvRandomFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters,
+                                                   render_mode= 'rgb_array')
+    else:
+        train_env_fabric = LunarEnvFixedFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters)
+        test_env_fabric = LunarEnvFixedFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters,  render_mode= 'rgb_array')
     env = train_env_fabric.generate_env()
 
     T.manual_seed(training_args.seed)
@@ -51,12 +60,10 @@ def train(cfg: DictConfig):
     T.backends.cudnn.benchmark = False
     np.random.seed(training_args.seed)
     random.seed(training_args.seed)
-    # env.seed(args.seed)
-
+    #env.seed(args.seed)
+    
     # Weights and biases initialization
-    wandb.init(project="Model tests on the non-randomized env", entity="tum-adlr-ws22-06",
-               config=OmegaConf.to_object(cfg))
-
+    wandb.init(project="ADLR randomized envs", entity="tum-adlr-ws22-06", config=OmegaConf.to_object(cfg))
     # Experiment directory storage
     env_path = os.path.join("experiments", "LunarLanderContinuous-v2")
     if not os.path.exists(env_path):
@@ -115,32 +122,32 @@ def train(cfg: DictConfig):
             print('collecting initial pool of data for train and eval')
             for env in train_tasks:
                 env.reset()
-                collect_data(self.num_initial_steps, 1, np.inf)
+                collect_data(training_args.num_initial_steps, 1, np.inf)
         # Sample data from train tasks.
-        for i in range(self.num_tasks_sample):
-            idx = np.random.randint(len(self.train_tasks))
+        for i in range(training_args.num_tasks_sample):
+            idx = np.random.randint(len(training_args.train_tasks))
             self.task_idx = idx
             self.env.reset_task(idx)
             self.enc_replay_buffer.task_buffers[idx].clear()
 
             # collect some trajectories with z ~ prior
-            if self.num_steps_prior > 0:
-                self.collect_data(self.num_steps_prior, 1, np.inf)
+            if training_args.num_steps_prior > 0:
+                self.collect_data(training_args.num_steps_prior, 1, np.inf)
             # collect some trajectories with z ~ posterior
-            if self.num_steps_posterior > 0:
-                self.collect_data(self.num_steps_posterior, 1, self.update_post_train)
+            if training_args.num_steps_posterior > 0:
+                self.collect_data(training_args.num_steps_posterior, 1, training_args.update_post_train)
             # even if encoder is trained only on samples from the prior, the policy needs to learn to handle z ~ posterior
-            if self.num_extra_rl_steps_posterior > 0:
-                self.collect_data(self.num_extra_rl_steps_posterior, 1, self.update_post_train, add_to_enc_buffer=False)
+            if training_args.num_extra_rl_steps_posterior > 0:
+                self.collect_data(training_args.num_extra_rl_steps_posterior, 1, training_args.update_post_train, add_to_enc_buffer=False)
 
         # Sample train tasks and compute gradient updates on parameters.
-        for train_step in range(self.num_train_steps_per_itr):
-            indices = np.random.choice(self.train_tasks, self.meta_batch)
+        for train_step in range(training_args.num_train_steps_per_itr):
+            indices = np.random.choice(training_args.train_tasks, training_args.meta_batch)
             self._do_training(indices)
             self._n_train_steps_total += 1
 
-    mb_size = self.embedding_mini_batch_size
-    num_updates = self.embedding_batch_size // mb_size
+    mb_size = training_args.embedding_mini_batch_size
+    num_updates = training_args.embedding_batch_size // mb_size
 
     # sample context batch
     context_batch = self.sample_context(indices)
