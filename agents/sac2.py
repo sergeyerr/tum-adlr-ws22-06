@@ -7,7 +7,6 @@ import random
 
 class SACAgent2(SACAgent):
     # based on https://github.com/openai/spinningup/blob/master/spinup/algos/pytorch/sac/sac.py
-    # TODO this SAC algorithm does not work yet, it diverges.
     def __init__(self, **kwargs):
         self.q_lr = kwargs["q_lr"]
         self.input_dims = kwargs["input_dims"]
@@ -23,8 +22,9 @@ class SACAgent2(SACAgent):
 
         for p in self.q_1_target.parameters():
             p.requires_grad = False
-
+            
         super().__init__(**kwargs)
+
 
         self.alpha = kwargs["alpha"]
 

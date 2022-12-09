@@ -6,9 +6,11 @@ defaults:
 
 
 agent:
+# modify the name!
   experiment_name: "${agent.name}_default_env"
 
 training:
+  pass_env_parameters: True
   episodes: 10000
   episode_length: 1000
   update_after: 1000
@@ -33,7 +35,22 @@ validation:
   log_actions: True
 
 env:
-  env: 'LunarLanderContinuous-v2'
+  random_type: 'Uniform' # 'Uniform', 'Gaussian', 'Fixed'
+  gravity_lower: -12 # from -12 to 0
+  gravity_upper: 0 # from -12 to 0
+  wind_probability: 0.5
+  wind_power_lower: 0 # from 0 to 20
+  wind_power_upper: 10 # from 0 to 20
+  turbulence_power_lower: 0 # from 0 to 2
+  turbulence_power_upper: 1  # from 0 to 2
+
+  # If randomize type == Fixed, then these parameters will be used always
+  default_gravity: -10
+  default_wind: False
+  default_wind_power: 0
+  default_turbulence_power: 1.5
+
+
   
   
 
