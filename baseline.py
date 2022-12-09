@@ -11,7 +11,7 @@ import torch
 import torch as T
 import torch.nn as nn
 from omegaconf import DictConfig, OmegaConf
-from EnvironmentRandomizer import StateInjectorWrapper, LunarEnvRandomFabric, LunarEnvFixedFabric, LunarEnvHypercubeFabric
+from EnvironmentUtils import StateInjectorWrapper, LunarEnvRandomFabric, LunarEnvFixedFabric, LunarEnvHypercubeFabric
 
 import wandb
 from Noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, ZeroNoise

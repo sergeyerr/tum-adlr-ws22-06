@@ -4,7 +4,7 @@ import os
 import gymnasium as gym
 import torch as T
 import wandb
-from EnvironmentRandomizer import StateInjectorWrapper
+from EnvironmentUtils import StateInjectorWrapper
 
 
 def print_run_info(env, agent, agent_args, training_args, env_args, validation_args, noise):

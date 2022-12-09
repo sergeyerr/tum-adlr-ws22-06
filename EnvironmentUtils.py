@@ -28,6 +28,16 @@ class ValidationHypercube:
         return no_wind_ponts + wind_points
 
 
+class DetermenisticResetWrapper(gym.Wrapper):
+    def __init__(self, env, seed):
+        super().__init__(env)
+        self.seed = seed
+        
+        
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs, seed=self.seed)
+
+
 class StateInjectorWrapper(gym.Wrapper):
     def __init__(self, env, pass_env_params,
                  gravity_lower, gravity_upper, wind_power_lower, wind_power_upper, turbulence_power_lower, turbulence_power_upper):
@@ -89,14 +99,19 @@ class LunarEnvFixedFabric:
         self.default_wind_power = env_params['default_wind_power']
         self.default_turbulence_power = env_params['default_turbulence_power']
         self.render_mode_pass = render_mode
+        self.determenistic_reset = env_params['determenistic_reset']
+        self.seed = env_params['seed'] if 'seed' in env_params else 42
         
     def generate_env(self):
-        
-        return StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
+        env = StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
                                   render_mode=self.render_mode_pass, gravity=self.default_gravity , 
                                   enable_wind=self.default_wind, wind_power=self.default_wind_power, turbulence_power=self.default_turbulence_power), self.pass_env_params, 
                                     self.gravity_lower, self.gravity_upper, self.wind_power_lower,
                                     self.wind_power_upper, self.turbulence_power_lower, self.turbulence_power_upper)
+        if self.determenistic_reset:
+            return DetermenisticResetWrapper(env, self.seed)
+        else:
+            return env
 
 
 class LunarEnvRandomFabric(LunarEnvFixedFabric):
@@ -110,11 +125,16 @@ class LunarEnvRandomFabric(LunarEnvFixedFabric):
         else:
             raise NotImplementedError("Only uniform randomization is supported")
         
-        return StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
-                                  render_mode=self.render_mode_pass, gravity=gravity, 
-                                  enable_wind=enable_wind, wind_power=wind_power, turbulence_power=turbulence_power), self.pass_env_params, 
-                                    self.gravity_lower, self.gravity_upper, self.wind_power_lower,
-                                    self.wind_power_upper, self.turbulence_power_lower, self.turbulence_power_upper)
+        env = StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
+                            render_mode=self.render_mode_pass, gravity=gravity, 
+                            enable_wind=enable_wind, wind_power=wind_power, turbulence_power=turbulence_power), self.pass_env_params, 
+                            self.gravity_lower, self.gravity_upper, self.wind_power_lower,
+                            self.wind_power_upper, self.turbulence_power_lower, self.turbulence_power_upper)
+        
+        if self.determenistic_reset:
+            return DetermenisticResetWrapper(env, self.seed)
+        else:
+            return env
         
     def get_uniform_parameters(self):
         gravity = random.uniform(self.gravity_lower, self.gravity_upper)
@@ -140,11 +160,15 @@ class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
         gravity, enable_wind, wind_power, turbulence_power = self.test_parameters[self.iter]
         self.iter += 1
         self.iter = self.iter % len(self.test_parameters)
-        return StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
+        env = StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
                                   render_mode=self.render_mode_pass, gravity=gravity, 
                                   enable_wind=enable_wind, wind_power=wind_power, turbulence_power=turbulence_power), self.pass_env_params, 
                                     self.gravity_lower, self.gravity_upper, self.wind_power_lower,
                                     self.wind_power_upper, self.turbulence_power_lower, self.turbulence_power_upper)
+        if self.determenistic_reset:
+            return DetermenisticResetWrapper(env, self.seed)
+        else:
+            return env
         
         
     def number_of_test_points(self):
