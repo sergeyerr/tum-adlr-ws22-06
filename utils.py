@@ -4,7 +4,8 @@ import os
 import gymnasium as gym
 import torch as T
 import wandb
-from EnvironmentRandomizer import StateInjectorWrapper
+from EnvironmentUtils import StateInjectorWrapper
+
 
 def print_run_info(env, agent, agent_args, training_args, env_args, validation_args, noise):
     print(f"================= {'Environment Information'.center(30)} =================")
@@ -40,6 +41,7 @@ def print_run_info(env, agent, agent_args, training_args, env_args, validation_a
     print(agent)
     
     print(f"================= {'Begin Training'.center(30)} =================")
+
     
     
 def validate(agent, validation_args, experiment_path, episode, test_env_fabric):
@@ -47,7 +49,7 @@ def validate(agent, validation_args, experiment_path, episode, test_env_fabric):
     doing all the validation stuff + logging
     returns, whether the env is solved
     '''
-    evaluation_rewards = 0
+    stop_reward = []
     for evaluation_episode in range(validation_args.eval_eps):
         # TODO: specify occurencies of vids (hydra, conditional parameter)
         # use experiment_path folder
@@ -70,9 +72,6 @@ def validate(agent, validation_args, experiment_path, episode, test_env_fabric):
         rewards = 0
 
         for step in range(validation_args.validation_episode_length):
-            # !!! careful with video recording, possibly delete it 
-            if validation_args.render:
-                test_env.render()
 
             # Get deterministic action
             with T.no_grad():
@@ -98,7 +97,7 @@ def validate(agent, validation_args, experiment_path, episode, test_env_fabric):
             if done:
                 break
 
-        evaluation_rewards += rewards
+        stop_reward.append(rewards)
         # seems to save only the last plot
         if validation_args.log_actions and evaluation_episode == 0:
             wandb.log({"Validation after episode": episode, 
@@ -115,21 +114,40 @@ def validate(agent, validation_args, experiment_path, episode, test_env_fabric):
                        "Wind power" : wind_power,
                        "Turbulence power" : turbulence_power,
                         "Video" : wandb.Video(os.path.join(video_path, "rl-video-episode-0.mp4"), fps=4, format="gif")})
-        
-    evaluation_rewards = round(evaluation_rewards / validation_args.eval_eps, 3)
+    
+    avg_reward = round(sum(stop_reward) / len(stop_reward), 3)
+    min_reward = round(min(stop_reward), 3)
+    
+    if validation_args.eval_stop_condition == "avg":  
+        stop_reward = avg_reward
+    elif validation_args.eval_stop_condition == "min":
+        stop_reward = min_reward
+    else:
+        raise ValueError(f"Unknown eval_stop_condition {validation_args.eval_stop_condition}")
+    
     save_path = os.path.join(experiment_path, "saves")
     
     agent.save_agent(save_path)
-    print(f"Episode: {episode} Average evaluation reward: {evaluation_rewards} Agent saved at {save_path}")
-    wandb.log({"Validation after episode": episode,  "Average evaluation reward": evaluation_rewards})
+    
+    
+    art = wandb.Artifact("lunar_lander_model", type="model")
+    for f in os.listdir(save_path):
+        art.add_file(os.path.join(save_path, f))
+    wandb.log_artifact(art)
+    
+    
+    print(f"Episode: {episode} | Average evaluation reward: {avg_reward} | Min evaluation reward: {min_reward} | Agent saved at {save_path}")
+    
+    wandb.log({"Validation after episode": episode,  "Average evaluation reward": avg_reward,
+               "Min evaluation reward": min_reward})
     with open(f"{experiment_path}/evaluation_rewards.csv", "a") as f:
-        f.write(f"{episode}, {evaluation_rewards}\n")
+        f.write(f"{episode}, {stop_reward}\n")
     try:
-        if evaluation_rewards > test_env.spec.reward_threshold * 1.1:  # x 1.1 because of small eval_episodes
+        if stop_reward > test_env.spec.reward_threshold * 1.1:  # x 1.1 because of small eval_episodes
             print(f"Environment solved after {episode} episodes")
             return True
     except Exception as e:
-        if evaluation_rewards > -120:
+        if stop_reward > -120:
             print(f"Environment solved after {episode} episodes")
             return True
     return False

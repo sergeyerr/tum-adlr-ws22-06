@@ -11,7 +11,7 @@ import torch
 import torch as T
 import torch.nn as nn
 from omegaconf import DictConfig, OmegaConf
-from EnvironmentRandomizer import StateInjectorWrapper, LunarEnvFabric
+from EnvironmentUtils import LunarEnvRandomFabric, LunarEnvFixedFabric, LunarEnvHypercubeFabric
 from DataHandling.EnvironmentSampler import Sampler
 
 import wandb
@@ -190,7 +190,6 @@ class PEARLExperiment(object):
                 context = self.agent.sample_context(self.task_idx)
                 self.agent.pi.infer_posterior(context)
         self._n_env_steps_total += num_transitions
-
 
 if __name__ == '__main__':
     exp = PEARLExperiment()

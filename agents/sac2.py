@@ -120,6 +120,50 @@ class SACAgent2(SACAgent):
 
             for q2_param, target_q2_param in zip(self.q_2.parameters(), self.q_2_target.parameters()):
                 target_q2_param.data = q2_param.data
+                
+                
+    def save_agent(self, save_path):
+        if not os.path.exists(save_path):
+            os.mkdir(save_path)
+
+
+        critic_1_path = os.path.join(save_path, "q_1_network.pth")
+        torch.save(self.q_1.state_dict(), critic_1_path)
+
+        critic_2_path = os.path.join(save_path, "q_2_network.pth")
+        torch.save(self.q_2.state_dict(), critic_2_path)
+
+        pi_path = os.path.join(save_path, "pi_network.pth")
+        torch.save(self.pi.state_dict(), pi_path)
+
+        target_value_path = os.path.join(save_path, "target_q1_network.pth")
+        torch.save(self.q_1_target.state_dict(), target_value_path)
+        
+        target_value_path = os.path.join(save_path, "target_q2_network.pth")
+        torch.save(self.q_2_target.state_dict(), target_value_path)
+
+    def load_agent(self, save_path):
+        pi_path = os.path.join(save_path, "pi_network.pth")
+        self.pi.load_state_dict(torch.load(pi_path))
+        self.pi.eval()
+
+        critic_1_path = os.path.join(save_path, "q_1_network.pth")
+        self.q_1.load_state_dict(torch.load(critic_1_path))
+        self.q_1.eval()
+
+        critic_2_path = os.path.join(save_path, "q_2_network.pth")
+        self.q_2.load_state_dict(torch.load(critic_2_path))
+        self.q_2.eval()
+        
+        target_q1_path = os.path.join(save_path, "target_q1_network.pth")
+        self.q_1_target.load_state_dict(torch.load(target_q1_path))
+        self.q_1_target.eval()
+        
+        target_q2_path = os.path.join(save_path, "target_q2_network.pth")
+        self.q_2_target.load_state_dict(torch.load(target_q2_path))
+        self.q_2_target.eval()
+
+        self.sync_weights()
 
     def adjust_temperature(self):
         pass

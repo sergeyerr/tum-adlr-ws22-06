@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - agent: sac2
+  - agent: pearl
   - optional training: ${agent}
   - optional validation: ${agent}
 
@@ -10,7 +10,7 @@ agent:
   experiment_name: "${agent.name}_default_env"
 
 training:
-  pass_env_parameters: True
+  pass_env_parameters: False
   episodes: 10000
   episode_length: 1000
   update_after: 1000
@@ -27,17 +27,27 @@ training:
 validation:
   log_model_wandb: True
   log_model_every_training_batch: 1000
-  eval_eps: 5
-  eval_interval: 20
-  render: False
+
+  # hypercube validation is not possible (it makes no sense), if env is NOT random 
+  hypercube_validation: True
+  hypercube_points_per_axis: 3 
+  # eval_eps will be calculated automatically in case of hypercube validation
+  eval_eps: 50
+  
+  eval_stop_condition: 'min' # 'min', 'avg': how results from eval_eps are aggregated
+  eval_interval: 5
   record_video_on_eval: True
   validation_episode_length: 1000
   log_actions: True
 
 env:
-  random_type: 'Uniform' # 'Uniform', 'Gaussian', 'Fixed'
-  gravity_lower: -12 # from -12 to 0
-  gravity_upper: 0 # from -12 to 0
+  determenistic_reset: True
+  seed: 0
+  random: True
+  random_type: 'Uniform' # 'Uniform', 'Gaussian'
+  # if you set any of bounds precisely, there will be the error in validation
+  gravity_lower: -11.999 # from -12 to 0
+  gravity_upper: -0.0001 # from -12 to 0
   wind_probability: 0.5
   wind_power_lower: 0 # from 0 to 20
   wind_power_upper: 10 # from 0 to 20
