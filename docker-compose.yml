@@ -1,0 +1,6 @@
+version: '3'
+
+services:
+  train:
+    image: linuxserver/plex
+    env_file: env_file_name
