@@ -13,6 +13,7 @@ class ReplayBuffer(object):
     def get_batch(self, batch_size):
         sample = choices(self.queue, k=batch_size)
         out_dict = {'o':[],'a':[],'r':[],'o2':[],'d':[]}
+        # TODO I think this is wrong. We do not need the loop
         for o, a, r, o2, d in sample:
             out_dict['o'].append(o)
             out_dict['a'].append(a)
@@ -34,9 +35,8 @@ class ReplayBuffer(object):
 
 class MultiTaskReplayBuffer(object):
 
-    def __init__(self, capacity, env, num_tasks):
+    def __init__(self, capacity, num_tasks):
         self.capacity = capacity
-        self.env = env
         self.num_tasks = num_tasks
         self.task_buffers = dict([(idx, ReplayBuffer(capacity)) for idx in num_tasks])
 
@@ -45,6 +45,12 @@ class MultiTaskReplayBuffer(object):
 
     def random_batch(self, task_id, batch_size):
         self.task_buffers[task_id].get_batch(batch_size)
+
+    # TODO sampling context and sampling sac could be moved here instead
+    # so you can call encoder_replay_buffer.sample_random_batch(indices, sample_context=True)
+    def sample_random_batch(self, task_indices, sample_context=False):
+        pass
+
 
     def clear_buffer(self, task_id):
         self.task_buffers[task_id].clear()

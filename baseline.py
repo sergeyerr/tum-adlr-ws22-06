@@ -144,17 +144,15 @@ def train(cfg : DictConfig):
                     # Loss information kept for monitoring purposes during training
                     actor_loss += loss['actor_loss']
                     critic_loss += loss['critic_loss']
-                    wandb.log({"Training episode": episode, "Batch": (episode) * training_args.train_batches + i,
+                    wandb.log({"Training episode": episode, "Batch": episode * training_args.train_batches + i,
                             "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
                 agent.update_target_network()
 
-                
             t += 1
             # End episode if done
             if done:
                 break
-        
-               
+
         reward_history.append(episode_reward)
         print(f"Training episode: {episode} Episode reward: {episode_reward} Average reward: {np.mean(reward_history)}")
         print(f"Gravity: {gravity} Wind: {enable_wind} Wind power: {wind_power} Turbulence power: {turbulence_power}")

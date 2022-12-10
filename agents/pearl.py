@@ -18,7 +18,6 @@
 from .sac import SACAgent
 import Networks
 from DataHandling.ReplayBuffer import MultiTaskReplayBuffer
-from DataHandling.EnvironmentSampler import Sampler
 import torch
 
 
@@ -32,25 +31,27 @@ class PEARLAgent(SACAgent):
         alpha = kwargs["alpha"]
         encoderParams = kwargs["encoderParams"]
         policyParams = kwargs["policyParams"]
-        self.env = kwargs["env"]
         capacity = kwargs["ReplayBufferCapacity"]
-        num_tasks = kwargs["num_tasks"]
+        num_tasks = kwargs["num_train_tasks"]
         episode_length = kwargs["episode_length"]
         self.kl_lambda = kwargs["kl_lambda"]
         self.policy_mean_reg_weight = kwargs["policy_mean_reg_weight"]
         self.policy_std_reg_weight = kwargs["policy_std_reg_weight"]
         self.policy_pre_activation_weight = kwargs["policy_pre_activation_weight"]
-        self.agent = Networks.PEARLPolicy(alpha, encoder_dict=encoderParams, policy_dict=policyParams)
+        self.num_steps_prior = kwargs["num_steps_prior"]
+        self.num_steps_posterior = kwargs["num_steps_posterior"]
+        self.num_extra_rl_steps_posterior = kwargs["num_extra_rl_steps_posterior"]
+        self.embedding_mini_batch_size = kwargs["embedding_mini_batch_size"]
+        self.pi = Networks.PEARLPolicy(alpha, encoder_dict=encoderParams, policy_dict=policyParams)
         # stores experience
-        self.replay_buffer = MultiTaskReplayBuffer(capacity, self.env, num_tasks)
-        self.encoder_replay_buffer = MultiTaskReplayBuffer(capacity, self.env, num_tasks)
+        self.replay_buffer = MultiTaskReplayBuffer(capacity, num_tasks)
+        self.encoder_replay_buffer = MultiTaskReplayBuffer(capacity, num_tasks)
 
         self.qf_criterion = torch.nn.MSELoss()
         self.vf_criterion = torch.nn.MSELoss()
         self.vib_criterion = torch.nn.MSELoss()
         self.l2_reg_criterion = torch.nn.MSELoss()
 
-        self.sampler = Sampler
 
 
     # TODO figure out the shape of data, try vectorizing everything
@@ -58,25 +59,54 @@ class PEARLAgent(SACAgent):
         ''' sample batch of training data from a list of tasks for training the actor-critic '''
         # this batch consists of transitions sampled randomly from replay buffer
         # rewards are always dense
-        #batches = [ptu.np_to_pytorch_batch(self.replay_buffer.random_batch(idx, batch_size=self.batch_size)) for idx in
-                   #task_indeces]
-        #unpacked = [self.unpack_batch(batch) for batch in batches]
+        batches = [ptu.np_to_pytorch_batch(self.replay_buffer.random_batch(idx, batch_size=self.batch_size)) for idx in
+                   task_indeces]
+        unpacked = [self.unpack_batch(batch) for batch in batches]
         # group like elements together
-        #unpacked = [[x[i] for x in unpacked] for i in range(len(unpacked[0]))]
-        #unpacked = [torch.cat(x, dim=0) for x in unpacked]
-        #return unpacked
-        pass
+        unpacked = [[x[i] for x in unpacked] for i in range(len(unpacked[0]))]
+        unpacked = [torch.cat(x, dim=0) for x in unpacked]
+        return unpacked
+
+    # TODO figure out the shape of data, try vectorizing everything
+    def sample_context(self, indices):
+        ''' sample batch of context from a list of tasks from the replay buffer '''
+        # make method work given a single task index
+        if not hasattr(indices, '__iter__'):
+            indices = [indices]
+        batches = [ptu.np_to_pytorch_batch(
+            self.enc_replay_buffer.random_batch(idx, batch_size=self.embedding_batch_size, sequence=self.recurrent)) for
+                   idx in indices]
+        context = [self.unpack_batch(batch, sparse_reward=self.sparse_rewards) for batch in batches]
+        # group like elements together
+        context = [[x[i] for x in context] for i in range(len(context[0]))]
+        context = [torch.cat(x, dim=0) for x in context]
+        # full context consists of [obs, act, rewards, next_obs, terms]
+        # if dynamics don't change across tasks, don't include next_obs
+        # don't include terminals in context
+        if self.use_next_obs_in_context:
+            context = torch.cat(context[:-1], dim=2)
+        else:
+            context = torch.cat(context[:-2], dim=2)
+        return context
+
 
     # performs one optimization step of agent
-    def optimize(self, task_indeces, context):
+    def optimize(self, task_indices):
+
+        # sample context batch
+        context = self.sample_context(task_indices)
+
+        # zero out context and hidden encoder state
+        self.pi.clear_z(num_tasks=len(task_indices))
+
         loss_results = {}
-        num_tasks = len(task_indeces)
+        num_tasks = len(task_indices)
 
         # data is (task, batch, feat)
-        obs, actions, rewards, next_obs, terms = self.sample_sac(task_indeces)
+        obs, actions, rewards, next_obs, terms = self.sample_sac(task_indices)
 
         # run inference in networks
-        policy_outputs, task_z = self.agent(obs, context)
+        policy_outputs, task_z = self.pi(obs, context)
         # TODO in networks SACActor output the necessary data
         new_actions, policy_mean, policy_log_std, log_pi = policy_outputs[:4]
 
@@ -96,8 +126,8 @@ class PEARLAgent(SACAgent):
             target_v_values = self.target_value(next_obs, task_z)
 
         # KL constraint on z if probabilistic
-        self.agent.context_encoder.optimizer.zero_grad()
-        kl_div = self.agent.compute_kl_div()
+        self.pi.context_encoder.optimizer.zero_grad()
+        kl_div = self.pi.compute_kl_div()
         kl_loss = self.kl_lambda * kl_div
         kl_loss.backward(retain_graph=True)
 
@@ -114,7 +144,7 @@ class PEARLAgent(SACAgent):
         qf_loss.backward()
         self.q_1.optimizer.step()
         self.q_2.optimizer.step()
-        self.agent.context_encoder.optimizer.step()
+        self.pi.context_encoder.optimizer.step()
 
         # compute min Q on the new actions
         q1 = self.q_1(obs, new_actions, task_z.detach())
@@ -144,39 +174,8 @@ class PEARLAgent(SACAgent):
         policy_reg_loss = mean_reg_loss + std_reg_loss + pre_activation_reg_loss
         policy_loss = policy_loss + policy_reg_loss
 
-        self.agent.policy.optimizer.zero_grad()
+        self.pi.policy.optimizer.zero_grad()
         policy_loss.backward()
-        self.agent.policy.optimizer.step()
+        self.pi.policy.optimizer.step()
 
         return loss_results
-
-    def collect_data(self, num_samples, resample_z_rate, update_posterior_rate, add_to_enc_buffer=True):
-        '''
-        get trajectories from current env in batch mode with given policy
-        collect complete trajectories until the number of collected transitions >= num_samples
-        :param agent: policy to rollout
-        :param num_samples: total number of transitions to sample
-        :param resample_z_rate: how often to resample latent context z (in units of trajectories)
-        :param update_posterior_rate: how often to update q(z | c) from which z is sampled (in units of trajectories)
-        :param add_to_enc_buffer: whether to add collected data to encoder replay buffer
-        '''
-
-
-        # start from the prior
-        self.agent.clear_z()
-
-        num_transitions = 0
-        while num_transitions < num_samples:
-            paths, n_samples = self.sampler.obtain_samples(max_samples=num_samples - num_transitions,
-                                                           max_trajs=update_posterior_rate,
-                                                           accum_context=False,
-                                                           resample=resample_z_rate)
-            num_transitions += n_samples
-            self.replay_buffer.add_paths(self.task_idx, paths)
-            if add_to_enc_buffer:
-                self.enc_replay_buffer.add_paths(self.task_idx, paths)
-            if update_posterior_rate != np.inf:
-                context = self.sample_context(self.task_idx)
-                self.agent.infer_posterior(context)
-        self._n_env_steps_total += num_transitions
-        gt.stamp('sample')
