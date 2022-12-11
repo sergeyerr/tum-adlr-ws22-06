@@ -41,7 +41,8 @@ class PEARLAgent(SACAgent):
         self.num_steps_prior = kwargs["num_steps_prior"]
         self.num_steps_posterior = kwargs["num_steps_posterior"]
         self.num_extra_rl_steps_posterior = kwargs["num_extra_rl_steps_posterior"]
-        self.embedding_mini_batch_size = kwargs["embedding_mini_batch_size"]
+        self.embedding_batch_size = kwargs["embedding_batch_size"]
+        self.batch_size = kwargs["batch_size"]
         self.use_next_obs_in_context = kwargs["use_next_obs_in_context"]
         self.pi = Networks.PEARLPolicy(alpha, encoder_dict=encoderParams, policy_dict=policyParams)
         # stores experience
@@ -57,7 +58,8 @@ class PEARLAgent(SACAgent):
     def optimize(self, task_indices):
 
         # sample context batch
-        context = self.encoder_replay_buffer.sample_random_batch(task_indices, sample_context=True,
+        context = self.encoder_replay_buffer.sample_random_batch(task_indices, batch_size=self.embedding_batch_size,
+                                                                 sample_context=True,
                                                                  use_next_obs_in_context=self.use_next_obs_in_context)
 
         # zero out context and hidden encoder state
@@ -67,7 +69,8 @@ class PEARLAgent(SACAgent):
         num_tasks = len(task_indices)
 
         # data is (task, batch, feat)
-        obs, actions, rewards, next_obs, terms = self.replay_buffer.sample_random_batch(task_indices)
+        obs, actions, rewards, next_obs, terms = self.replay_buffer.sample_random_batch(task_indices,
+                                                                                        batch_size=self.batch_size)
 
         # run inference in networks
         policy_outputs, task_z = self.pi(obs, context)
