@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - agent: pearl
+  - agent: sac2
   - optional training: ${agent}
   - optional validation: ${agent}
 
@@ -41,8 +41,8 @@ validation:
   log_actions: True
 
 env:
-  deterministic_reset: True
   seed: 0
+  deterministic_reset: True
   random: True
   random_type: 'Uniform' # 'Uniform', 'Gaussian'
   # if you set any of bounds precisely, there will be the error in validation

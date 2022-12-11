@@ -31,11 +31,11 @@ class PEARLExperiment(object):
         self.agent_args = cfg["agent"]
         print(self.agent_args)
         self.env_args = cfg["env"]
+        print(self.env_args)
         self.validation_args = cfg["validation"]
         self.train_env_fabric = LunarEnvRandomFabric(pass_env_params=self.training_args["pass_env_parameters"], **self.env_args)
         self.test_env_fabric = LunarEnvRandomFabric(pass_env_params=self.training_args["pass_env_parameters"],
-                                              render_mode='rgb_array',
-                                              **self.env_args)
+                                                    render_mode='rgb_array', **self.env_args)
         # creates list of env with different parametrizations
         self.train_tasks = self.create_train_tasks(self.train_env_fabric, self.training_args["num_train_tasks"])
         self.eval_tasks = self.create_train_tasks(self.test_env_fabric, self.training_args["num_eval_tasks"])

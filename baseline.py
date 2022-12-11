@@ -33,10 +33,12 @@ def train(cfg : DictConfig):
     
    # env = LunarRandomizerWrapper(pass_env_params=training_args.pass_env_parameters, **env_args)
     if env_args.random:
-        train_env_fabric = LunarEnvRandomFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters)
+        train_env_fabric = LunarEnvRandomFabric(pass_env_params=training_args.pass_env_parameters, **env_args)
         if validation_args.hypercube_validation:
-            test_env_fabric = LunarEnvHypercubeFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters,  
-                                                      render_mode= 'rgb_array', points_per_axis=validation_args.hypercube_points_per_axis)
+            test_env_fabric = LunarEnvHypercubeFabric(pass_env_params=training_args.pass_env_parameters,
+                                                      render_mode= 'rgb_array',
+                                                      points_per_axis=validation_args.hypercube_points_per_axis,
+                                                      **env_args)
             validation_args.eval_eps = test_env_fabric.number_of_test_points()
         else:
             test_env_fabric = LunarEnvRandomFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters,

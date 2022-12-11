@@ -4,7 +4,7 @@ import numpy as np
 from gymnasium.spaces import Box
 
 class ValidationHypercube:
-    def __init__(self, env_params, points_per_axis = 3):
+    def __init__(self, points_per_axis=3, **env_params):
         '''
         env_params - config dict, with bounds for gravity, wind and turbulence;
         points_per_axis - number of points per dimenstion of the hypercube
@@ -81,9 +81,8 @@ class StateInjectorWrapper(gym.Wrapper):
     
 class LunarEnvFixedFabric:
     '''Parent class for all fabrics'''
-    def __init__(self, pass_env_params,
-                env_params, render_mode=None):
-        self.random_type =  env_params['random_type']
+    def __init__(self, pass_env_params, render_mode=None, **env_params):
+        self.random_type = env_params['random_type']
         self.pass_env_params = pass_env_params
         if self.random_type != 'Uniform' and self.random_type != 'Fixed':
             raise NotImplementedError("Only uniform randomization is supported")
@@ -115,9 +114,8 @@ class LunarEnvFixedFabric:
 
 
 class LunarEnvRandomFabric(LunarEnvFixedFabric):
-    def __init__(self, pass_env_params,
-                env_params, render_mode=None):
-        super().__init__(pass_env_params, env_params, render_mode)
+    def __init__(self, pass_env_params, render_mode=None, **env_params):
+        super().__init__(pass_env_params, render_mode, **env_params)
         
     def generate_env(self):
         if self.random_type == "Uniform":
@@ -148,10 +146,9 @@ class LunarEnvRandomFabric(LunarEnvFixedFabric):
 class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
     '''Fabric for generating environments with parameters from hypercube grid 
     '''
-    def __init__(self, pass_env_params,
-            env_params, render_mode=None, points_per_axis = 3):
-        super().__init__(pass_env_params, env_params, render_mode)
-        self.test_parameters = ValidationHypercube(env_params=env_params, points_per_axis=points_per_axis).get_points()
+    def __init__(self, pass_env_params, render_mode=None, points_per_axis=3, ** env_params):
+        super().__init__(pass_env_params, render_mode, **env_params)
+        self.test_parameters = ValidationHypercube(points_per_axis=points_per_axis, **env_params).get_points()
         self.iter = 0
     
     
