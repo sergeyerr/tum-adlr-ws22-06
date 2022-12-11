@@ -46,7 +46,7 @@ class Sampler(object):
         rewards = []
         terminals = []
         env = self.eval_tasks[task_idx] if evalu else self.train_tasks[task_idx]
-        o = env.reset()
+        o,_ = env.reset()
         next_o = None
         path_length = 0
 

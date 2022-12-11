@@ -29,7 +29,6 @@ class SACAgent(object):
         self.sync_weights()
 
         # Replay buffer
-        self.min_replay_size = kwargs["min_replay_size"]
         self.replay_buffer = ReplayBuffer(kwargs["replay_buffer_size"])
 
         # Constants

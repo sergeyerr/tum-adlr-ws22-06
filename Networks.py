@@ -109,8 +109,10 @@ class SACCriticNetwork(nn.Module):
         self.fc1_dims = fc1_dims
         self.fc2_dims = fc2_dims
         self.n_actions = n_actions
+        if isinstance(input_dims, list):
+            self.input_dims = int(np.prod(input_dims))
 
-        self.fc1 = nn.Linear(self.input_dims[0]+n_actions, self.fc2_dims)
+        self.fc1 = nn.Linear(self.input_dims+n_actions, self.fc2_dims)
         self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)
         self.q = nn.Linear(self.fc2_dims, 1)
 
@@ -119,6 +121,7 @@ class SACCriticNetwork(nn.Module):
 
         self.to(self.device)
 
+    # TODO for pearl I need to contact the latent variable to the state
     def forward(self, state, action):
         action_value = self.fc1(T.cat([state, action], dim=1))
         action_value = F.relu(action_value)
@@ -136,8 +139,10 @@ class SACValueNetwork(nn.Module):
             self.input_dims = input_dims
             self.fc1_dims = fc1_dims
             self.fc2_dims = fc2_dims
+            if isinstance(input_dims, list):
+                self.input_dims = int(np.prod(input_dims))
 
-            self.fc1 = nn.Linear(*self.input_dims, self.fc1_dims)
+            self.fc1 = nn.Linear(self.input_dims, self.fc1_dims)
             self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)
             self.v = nn.Linear(self.fc2_dims, 1)
 
@@ -158,8 +163,7 @@ class SACValueNetwork(nn.Module):
 
 
 class SACActorNetwork(nn.Module):
-    def __init__(self, alpha, input_dims, max_action, fc1_dims=256,
-            fc2_dims=256, n_actions=2):
+    def __init__(self, alpha, input_dims, max_action, fc1_dims=256, fc2_dims=256, n_actions=2):
         super(SACActorNetwork, self).__init__()
         self.input_dims = input_dims
         self.fc1_dims = fc1_dims
@@ -168,7 +172,10 @@ class SACActorNetwork(nn.Module):
         self.max_action = max_action
         self.reparam_noise = 1e-6
 
-        self.fc1 = nn.Linear(*self.input_dims, self.fc1_dims)
+        if isinstance(input_dims, list):
+            self.input_dims = int(np.prod(input_dims))
+
+        self.fc1 = nn.Linear(self.input_dims, self.fc1_dims)
         self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)
         self.mu = nn.Linear(self.fc2_dims, self.n_actions)
         self.sigma = nn.Linear(self.fc2_dims, self.n_actions)
@@ -222,15 +229,17 @@ class SACActorNetwork(nn.Module):
 
 
 class ContextEncoder(nn.Module):
-    def __init__(self, alpha, in_size, out_size, fc1_dims=200, fc2_dims=200, fc3_dims=200):
+    def __init__(self, alpha, input_size, out_size, fc1_dims=200, fc2_dims=200, fc3_dims=200):
         super(ContextEncoder, self).__init__()
         self.fc1_dims = fc1_dims
         self.fc2_dims = fc2_dims
         self.fc3_dims = fc3_dims
-        self.in_size = in_size
+        self.input_size = input_size
         self.out_size = out_size
+        if isinstance(input_size, list):
+            self.input_size = int(np.prod(input_size))
 
-        self.fc1 = nn.Linear(*self.input_size, self.fc1_dims)
+        self.fc1 = nn.Linear(self.input_size, self.fc1_dims)
         self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)
         self.fc3 = nn.Linear(self.fc2_dims, self.fc3_dims)
         self.z_layer = nn.Linear(self.fc3_dims, self.out_size)
@@ -254,13 +263,12 @@ class ContextEncoder(nn.Module):
 
 class PEARLPolicy(nn.Module):
 
-    def __init__(self, alpha, encoder_dict, policy_dict):
+    def __init__(self, alpha, latent_dim, policy_input_dims, encoder_in_size, max_action,
+                 encoder_out_size, use_next_obs_in_context):
         super(PEARLPolicy, self).__init__()
-        self.latent_dim = encoder_dict["latent_dim"]
-        self.policy = SACActorNetwork(alpha=alpha, input_dims=policy_dict["input_dims"],
-                                       max_action=policy_dict["max_action"])
-        self.context_encoder = ContextEncoder(alpha=alpha, in_size=encoder_dict["in_size"],
-                                               out_size=encoder_dict["out_size"])
+        self.latent_dim = latent_dim
+        self.policy = SACActorNetwork(alpha=alpha, input_dims=policy_input_dims, max_action=max_action)
+        self.context_encoder = ContextEncoder(alpha=alpha, input_size=encoder_in_size, out_size=encoder_out_size)
 
         self.register_buffer('z', torch.zeros(1, self.latent_dim))
         self.register_buffer('z_means', torch.zeros(1, self.latent_dim))
@@ -271,7 +279,7 @@ class PEARLPolicy(nn.Module):
         self.z = None
         self.context = None
         # TODO pass this to init
-        self.use_next_obs_in_context = encoder_dict["use_next_obs_in_context"]
+        self.use_next_obs_in_context = use_next_obs_in_context
 
         self.clear_z()
 

@@ -27,43 +27,48 @@ class PEARLExperiment(object):
     def __init__(self, cfg):
         self.cfg = cfg
         self.training_args = cfg["training"]
-        print(self.training_args)
+        print(f"training args {json.dumps(self.training_args, indent=4)}")
         self.agent_args = cfg["agent"]
-        print(self.agent_args)
+        print(f"agent args{json.dumps(self.agent_args, indent=4)}")
         self.env_args = cfg["env"]
-        print(self.env_args)
+        print(f"env args{json.dumps(self.env_args, indent=4)}")
         self.validation_args = cfg["validation"]
-        self.train_env_fabric = LunarEnvRandomFabric(pass_env_params=self.training_args["pass_env_parameters"], **self.env_args)
+        print(f"validation args{json.dumps(self.validation_args, indent=4)}")
+
+        self.train_env_fabric = LunarEnvRandomFabric(pass_env_params=self.training_args["pass_env_parameters"],
+                                                     **self.env_args)
         self.test_env_fabric = LunarEnvRandomFabric(pass_env_params=self.training_args["pass_env_parameters"],
                                                     render_mode='rgb_array', **self.env_args)
         # creates list of env with different parametrizations
-        self.train_tasks = self.create_train_tasks(self.train_env_fabric, self.training_args["num_train_tasks"])
-        self.eval_tasks = self.create_train_tasks(self.test_env_fabric, self.training_args["num_eval_tasks"])
-        self.n_actions = self.train_tasks[0].action_space.shape[0]\
-            if type(self.train_tasks[0].action_space) == gym.spaces.box.Box else self.train_tasks[0].action_space.n
-        env_info = {"input_dims": self.train_tasks[0].observation_space.shape, "n_actions": self.n_actions,
-                    "max_action": self.train_tasks[0].action_space.high}
+        self.train_tasks = self.create_train_tasks(self.train_env_fabric, self.training_args["n_train_tasks"])
+        self.eval_tasks = self.create_train_tasks(self.test_env_fabric, self.training_args["n_eval_tasks"])
 
-        self.agent = PEARLAgent(**OmegaConf.to_object(self.agent_args), **OmegaConf.to_object(self.training_args),
-                                **env_info)
+        self.n_actions = int(np.prod(self.train_tasks[0].action_space.shape))\
+            if type(self.train_tasks[0].action_space) == gym.spaces.box.Box else self.train_tasks[0].action_space.n
+        env_info = {"obs_dim": int(np.prod(self.train_tasks[0].observation_space.shape)), "n_actions": self.n_actions,
+                    "max_action": self.train_tasks[0].action_space.high}
+        # this is critical so that the q and v functions have the right input size
+        env_info["input_dims"] = env_info["obs_dim"] + self.agent_args["latent_size"]
+        self.agent = PEARLAgent(**self.agent_args, **self.training_args, **env_info)
+
         self.sampler = Sampler(self.train_tasks, self.eval_tasks, self.agent.pi, self.training_args["max_path_length"])
         self.episode_reward = 0.0
         self.task_idx = 0
 
     def run(self):
 
-        experiment_name = self.agent_args.experiment_name
+        experiment_name = self.agent_args["experiment_name"]
 
-        T.manual_seed(self.training_args.seed)
+        T.manual_seed(self.training_args["seed"])
         T.backends.cudnn.deterministic = True
         T.backends.cudnn.benchmark = False
-        np.random.seed(self.training_args.seed)
-        random.seed(self.training_args.seed)
+        np.random.seed(self.training_args["seed"])
+        random.seed(self.training_args["seed"])
         # env.seed(self.args.seed)
 
         # Weights and biases initialization
         wandb.init(project="Model tests on the non-randomized env", entity="tum-adlr-ws22-06",
-                   config=OmegaConf.to_object(self.cfg))
+                   config=self.cfg)
 
         # Experiment directory storage
         env_path = os.path.join("experiments", "LunarLanderContinuous-v2")
@@ -84,17 +89,18 @@ class PEARLExperiment(object):
         with open(os.path.join(experiment_path, 'parameters.json'), 'w') as f:
             OmegaConf.save(self.cfg, f)
 
-        if self.validation_args.log_model_wandb:
+        if self.validation_args["log_model_wandb"]:
             # assumes that the model has only one actor, we may also log different models differently
-            wandb.watch(self.agent.pi, log="all", log_freq=self.validation_args.log_model_every_training_batch)
+            wandb.watch(self.agent.pi, log="all", log_freq=self.validation_args["log_model_every_training_batch"])
+            temp = self.validation_args["log_model_every_training_batch"]
             print(
-                f"================= {f'Sending weights to W&B every {self.validation_args.log_model_every_training_batch} batch'} =================")
+                f"================= {f'Sending weights to W&B every {temp} batch'} =================")
 
         reward_history = deque(maxlen=100)
 
         '''meta-training loop'''
         # at each iteration, we first collect data from tasks, perform meta-updates, then try to evaluate
-        for episode in range(self.training_args.episodes):
+        for episode in range(self.training_args["num_iterations"]):
             self.episode_reward = 0.0
             actor_loss = 0.0
             critic_loss = 0.0
@@ -104,39 +110,42 @@ class PEARLExperiment(object):
                 for idx, env in enumerate(self.train_tasks):
                     env.reset()
                     self.task_idx = idx
-                    self.collect_data(self.training_args.num_initial_steps, 1, np.inf)
+                    self.collect_data(self.training_args["num_initial_steps"], 1, np.inf)
             # Sample data from train tasks.
-            for i in range(self.training_args.num_tasks_sample):
-                idx = np.random.randint(self.training_args.num_train_tasks)
+            for i in range(self.training_args["num_tasks_sample"]):
+                idx = np.random.randint(self.training_args["n_train_tasks"])
                 self.task_idx = idx
                 env = self.train_tasks[idx]
                 env.reset()
                 self.agent.encoder_replay_buffer.task_buffers[idx].clear_buffer()
 
                 # collect some trajectories with z ~ prior
-                if self.num_steps_prior > 0:
-                    self.collect_data(self.num_steps_prior, 1, np.inf)
+                if self.training_args["num_steps_prior"] > 0:
+                    self.collect_data(self.training_args["num_steps_prior"], 1, np.inf)
                 # collect some trajectories with z ~ posterior
-                if self.num_steps_posterior > 0:
-                    self.collect_data(self.num_steps_posterior, 1, self.update_post_train)
-                # even if encoder is trained only on samples from the prior, the policy needs to learn to handle z ~ posterior
-                if self.num_extra_rl_steps_posterior > 0:
-                    self.collect_data(self.num_extra_rl_steps_posterior, 1, self.update_post_train, add_to_enc_buffer=False)
+                if self.training_args["num_steps_posterior"] > 0:
+                    self.collect_data(self.training_args["num_steps_posterior"], 1,
+                                      self.training_args["update_post_train"])
+                # even if encoder is trained only on samples from the prior,
+                # the policy needs to learn to handle z ~ posterior
+                if self.training_args["num_extra_rl_steps_posterior"] > 0:
+                    self.collect_data(self.training_args["num_extra_rl_steps_posterior"],
+                                      1, self.training_args["update_post_train"], add_to_enc_buffer=False)
 
             # Sample train tasks and compute gradient updates on parameters.
-            for train_step in range(self.training_args.train_batches):
-                indices = np.random.choice(self.training_args.num_train_tasks, self.training_args.meta_batch)
+            for train_step in range(self.training_args["num_train_steps_per_itr"]):
+                indices = np.random.choice(self.training_args["n_train_tasks"], self.training_args["meta_batch"])
                 loss = self.agent.optimize(indices)
                 # Loss information kept for monitoring purposes during training
                 actor_loss += loss['actor_loss']
                 critic_loss += loss['critic_loss']
-                wandb.log({"Training episode": episode, "Batch": episode * self.training_args.train_batches + train_step,
+                wandb.log({"Training episode": episode, "Batch": episode * self.training_args["num_train_steps_per_itr"] + train_step,
                            "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
-                self._n_train_steps_total += 1
 
             # reward_history.append(self.episode_reward)
 
-            if episode % self.validation_args.eval_interval == 0:
+            if episode % self.validation_args["eval_interval"] == 0:
+                # TODO ensure that evalute returns true when agent finishes environment
                 solved = self.evaluate(episode)
                 if solved:
                     # return true, that agent solved environment
@@ -146,7 +155,7 @@ class PEARLExperiment(object):
 
     def evaluate(self, episode):
 
-        indices = np.random.choice(range(self.training_args.num_train_tasks), self.training_args.num_eval_tasks)
+        indices = np.random.choice(range(self.training_args["n_train_tasks"]), self.training_args["n_eval_tasks"])
         train_returns = []
         ### eval train tasks with posterior sampled from the training replay buffer
         for idx in indices:
@@ -154,17 +163,17 @@ class PEARLExperiment(object):
             env = self.train_tasks[self.task_idx]
             env.reset()
             paths = []
-            for _ in range(self.training_args.num_steps_per_eval // self.training_args.max_path_length):
+            for _ in range(self.training_args["num_steps_per_eval"] // self.training_args["max_path_length"]):
                 context = self.agent.encoder_replay_buffer.sample_random_batch(self.task_idx,
-                                                                               self.training_args.embedding_batch_size,
+                                                                               self.training_args["embedding_batch_size"],
                                                                                sample_context=True,
                                                                                use_next_obs_in_context=
-                                                                               self.training_args.use_next_obs_in_context
+                                                                               self.agent_args["use_next_obs_in_context"]
                                                                                )
                 self.agent.pi.infer_posterior(context)
                 path, _ = self.sampler.obtain_samples(self.task_idx,
-                                                      deterministic=self.training_args.eval_deterministic,
-                                                      max_samples=self.training_args.max_path_length,
+                                                      deterministic=self.training_args["eval_deterministic"],
+                                                      max_samples=self.training_args["max_path_length"],
                                                       accum_context=False, max_trajs=1, resample=np.inf)
                 paths += path
 
@@ -187,7 +196,7 @@ class PEARLExperiment(object):
         online_returns = []
         for idx in indices:
             all_rets = []
-            for r in range(self.num_evals):
+            for r in range(self.training_args["num_evals"]):
                 paths = self.collect_paths(idx, evalu=evalu)
                 mean_reward = np.mean([sum(path["r"]) for path in paths])
                 all_rets.append(mean_reward)
@@ -210,22 +219,22 @@ class PEARLExperiment(object):
     # does one roll out with deterministic policy
     def collect_paths(self, idx, evalu=False):
         self.task_idx = idx
-        env = self.eval_taks[self.task_idx] if evalu else self.train_tasks[self.task_idx]
+        env = self.eval_tasks[self.task_idx] if evalu else self.train_tasks[self.task_idx]
         env.reset()
         self.agent.pi.clear_z()
         paths = []
         num_trajectories = 0
         num_transitions = 0
-        while num_transitions < self.training_args.num_steps_per_eval:
-            path, num = self.sampler.obtain_samples(deterministic=self.eval_deterministic,
-                                                    max_samples=self.num_steps_per_eval - num_transitions,
+        while num_transitions < self.training_args["num_steps_per_eval"]:
+            path, num = self.sampler.obtain_samples(deterministic=self.training_args["eval_deterministic"],
+                                                    max_samples=self.training_args["num_steps_per_eval"] - num_transitions,
                                                     max_trajs=1, accum_context=True, task_idx=self.task_idx,
                                                     evalu=evalu)
             paths += path
             num_transitions += num
             num_trajectories += 1
 
-            if num_trajectories >= self.training_args.num_exp_traj_eval:
+            if num_trajectories >= self.training_args["num_exp_traj_eval"]:
                 self.agent.pi.infer_posterior(self.agent.pi.context)
 
         return paths
@@ -253,13 +262,12 @@ class PEARLExperiment(object):
             if add_to_enc_buffer:
                 self.agent.encoder_replay_buffer.add_paths(self.task_idx, paths)
             if update_posterior_rate != np.inf:
-                context = self.encoder_replay_buffer.sample_random_batch(self.task_idx,
-                                                                         self.training_args.embedding_batch_size,
-                                                                         sample_context=True,
-                                                                         use_next_obs_in_context=
-                                                                         self.training_args.use_next_obs_in_context)
+                context = self.agent.encoder_replay_buffer.sample_random_batch(self.task_idx,
+                                                                               self.training_args["embedding_batch_size"],
+                                                                               sample_context=True,
+                                                                               use_next_obs_in_context=
+                                                                               self.agent_args["use_next_obs_in_context"])
                 self.agent.pi.infer_posterior(context)
-        self._n_env_steps_total += num_transitions
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def start(cfg: DictConfig):

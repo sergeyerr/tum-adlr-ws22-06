@@ -1,3 +1,5 @@
+n_train_tasks: 100 # number of tasks for meta training
+n_eval_tasks: 30 # number of tasks for evaluating adoption
 meta_batch: 64 # number of tasks to average the gradient across
 num_iterations: 100 # number of data sampling / training iterates
 num_train_steps_per_itr: 1000
@@ -12,8 +14,6 @@ batch_size: 1024 # number of transitions in the RL batch
 embedding_batch_size: 1024 # number of transitions in the context batch
 embedding_mini_batch_size: 1024 # number of context transitions to backprop through (should equal the arg above except in the recurrent encoder case)
 max_path_length: 1000 # max path length for this environment
-discount: 0.99 # RL discount factor
-replay_buffer_size: 1000000
 reward_scale: 1.0 # scale rewards before constructing Bellman update, effectively controls weight on the entropy of the policy
 num_exp_traj_eval: 1 # how many exploration trajs to collect before beginning posterior sampling at test time
 update_post_train: 1 # how often to resample the context when collecting data during training (in trajectories)

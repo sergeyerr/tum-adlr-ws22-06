@@ -79,7 +79,7 @@ def train(cfg : DictConfig):
         OmegaConf.save(cfg, f)
 
     n_actions = env.action_space.shape[0] if type(env.action_space) == gym.spaces.box.Box else env.action_space.n
-    env_info = {"input_dims":env.observation_space.shape, "n_actions": n_actions, "max_action": env.action_space.high}
+    env_info = {"input_dims": env.observation_space.shape, "n_actions": n_actions, "max_action": env.action_space.high}
 
     # TODO: Modify this to call any other algorithm
     if agent_args.name == "ddpg":
@@ -88,10 +88,8 @@ def train(cfg : DictConfig):
         algorithm = SACAgent
     elif agent_args.name == "sac2":
         algorithm = SACAgent2
-    
 
-    agent = algorithm(**OmegaConf.to_object(agent_args), **OmegaConf.to_object(training_args),
-                      **env_info)
+    agent = algorithm(**OmegaConf.to_object(agent_args), **OmegaConf.to_object(training_args), **env_info)
     
     if validation_args.log_model_wandb:
         # assumes that the model has only one actor, we may also log different models differently

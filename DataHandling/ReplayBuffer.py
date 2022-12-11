@@ -53,7 +53,7 @@ class MultiTaskReplayBuffer(object):
     def __init__(self, capacity, num_tasks):
         self.capacity = capacity
         self.num_tasks = num_tasks
-        self.task_buffers = dict([(idx, ReplayBuffer(capacity)) for idx in num_tasks])
+        self.task_buffers = dict([(idx, ReplayBuffer(capacity)) for idx in range(num_tasks)])
 
     def record(self, task_id, obs, action, reward, new_obs, done):
         self.task_buffers[task_id].record(obs, action, reward, new_obs, done)

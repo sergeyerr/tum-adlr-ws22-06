@@ -28,12 +28,33 @@ class PEARLAgent(SACAgent):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        alpha = kwargs["alpha"]
-        encoderParams = kwargs["encoderParams"]
-        policyParams = kwargs["policyParams"]
-        capacity = kwargs["ReplayBufferCapacity"]
-        num_tasks = kwargs["num_train_tasks"]
-        episode_length = kwargs["episode_length"]
+        alpha = kwargs["pi_lr"]
+        capacity = kwargs["replay_buffer_size"]
+        num_tasks = kwargs["n_train_tasks"]
+        latent_dim = kwargs["latent_size"]
+        # TODO check if encoder in size is correct. I could be that this size is for the recurrent encoder
+        encoder_in_size = kwargs["obs_dim"] + kwargs["n_actions"] + 1  # 1 is reward dimension
+        encoder_in_size = encoder_in_size + kwargs["obs_dim"] if kwargs["use_next_obs_in_context"] else encoder_in_size
+        encoder_out_size = latent_dim * 2 if kwargs['use_information_bottleneck'] else latent_dim
+        policy_input_dims = kwargs["obs_dim"] + latent_dim
+        self.use_next_obs_in_context = kwargs["use_next_obs_in_context"]
+        hidden_neurons = []
+
+
+        self.pi = Networks.PEARLPolicy(alpha=alpha, latent_dim=latent_dim, policy_input_dims=policy_input_dims,
+                                       encoder_in_size=encoder_in_size, max_action=kwargs["max_action"],
+                                       encoder_out_size=encoder_out_size,
+                                       use_next_obs_in_context=self.use_next_obs_in_context)
+        # stores experience
+        self.replay_buffer = MultiTaskReplayBuffer(capacity, num_tasks)
+        self.encoder_replay_buffer = MultiTaskReplayBuffer(capacity, num_tasks)
+
+        self.qf_criterion = torch.nn.MSELoss()
+        self.vf_criterion = torch.nn.MSELoss()
+        self.vib_criterion = torch.nn.MSELoss()
+        self.l2_reg_criterion = torch.nn.MSELoss()
+
+        ### params used in optimization
         self.kl_lambda = kwargs["kl_lambda"]
         self.policy_mean_reg_weight = kwargs["policy_mean_reg_weight"]
         self.policy_std_reg_weight = kwargs["policy_std_reg_weight"]
@@ -43,16 +64,7 @@ class PEARLAgent(SACAgent):
         self.num_extra_rl_steps_posterior = kwargs["num_extra_rl_steps_posterior"]
         self.embedding_batch_size = kwargs["embedding_batch_size"]
         self.batch_size = kwargs["batch_size"]
-        self.use_next_obs_in_context = kwargs["use_next_obs_in_context"]
-        self.pi = Networks.PEARLPolicy(alpha, encoder_dict=encoderParams, policy_dict=policyParams)
-        # stores experience
-        self.replay_buffer = MultiTaskReplayBuffer(capacity, num_tasks)
-        self.encoder_replay_buffer = MultiTaskReplayBuffer(capacity, num_tasks)
 
-        self.qf_criterion = torch.nn.MSELoss()
-        self.vf_criterion = torch.nn.MSELoss()
-        self.vib_criterion = torch.nn.MSELoss()
-        self.l2_reg_criterion = torch.nn.MSELoss()
 
     # performs one optimization step of agent
     def optimize(self, task_indices):
