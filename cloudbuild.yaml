@@ -1,8 +1,13 @@
 steps:
 - name: 'gcr.io/cloud-builders/docker'
-  args: [ 'build', '.',  '--build-arg', 'WANDB_KEY=$$WANDB_KEY',  '-t', 'europe-docker.pkg.dev/tum-adlr-ws22-06/adlr/train_contrainer' ]
+  entrypoint: bash
+  args:
+    - -c
+    - |
+      docker build . --build-arg WANDB_KEY=$$WANDB_KEY -t europe-docker.pkg.dev/tum-adlr-ws22-06/adlr/train_contrainer
+  #args: [ 'build', '.',  '--build-arg', 'WANDB_KEY=$$WANDB_KEY',  '-t', 'europe-docker.pkg.dev/tum-adlr-ws22-06/adlr/train_contrainer' ]
   secretEnv: ['WANDB_KEY']
 availableSecrets:
   secretManager:
-  - versionName: projects/612717574966/secrets/WANDB_KEY
+  - versionName: projects/612717574966/secrets/WANDB_KEY/versions/1
     env: 'WANDB_KEY'
