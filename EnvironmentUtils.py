@@ -99,7 +99,7 @@ class LunarEnvFixedFabric:
         self.default_wind_power = env_params['default_wind_power']
         self.default_turbulence_power = env_params['default_turbulence_power']
         self.render_mode_pass = render_mode
-        self.determenistic_reset = env_params['determenistic_reset']
+        self.deterministic_reset = env_params['deterministic_reset']
         self.seed = env_params['seed'] if 'seed' in env_params else 42
         
     def generate_env(self):
@@ -108,7 +108,7 @@ class LunarEnvFixedFabric:
                                   enable_wind=self.default_wind, wind_power=self.default_wind_power, turbulence_power=self.default_turbulence_power), self.pass_env_params, 
                                     self.gravity_lower, self.gravity_upper, self.wind_power_lower,
                                     self.wind_power_upper, self.turbulence_power_lower, self.turbulence_power_upper)
-        if self.determenistic_reset:
+        if self.deterministic_reset:
             return DetermenisticResetWrapper(env, self.seed)
         else:
             return env
@@ -131,7 +131,7 @@ class LunarEnvRandomFabric(LunarEnvFixedFabric):
                             self.gravity_lower, self.gravity_upper, self.wind_power_lower,
                             self.wind_power_upper, self.turbulence_power_lower, self.turbulence_power_upper)
         
-        if self.determenistic_reset:
+        if self.deterministic_reset:
             return DetermenisticResetWrapper(env, self.seed)
         else:
             return env
@@ -165,7 +165,7 @@ class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
                                   enable_wind=enable_wind, wind_power=wind_power, turbulence_power=turbulence_power), self.pass_env_params, 
                                     self.gravity_lower, self.gravity_upper, self.wind_power_lower,
                                     self.wind_power_upper, self.turbulence_power_lower, self.turbulence_power_upper)
-        if self.determenistic_reset:
+        if self.deterministic_reset:
             return DetermenisticResetWrapper(env, self.seed)
         else:
             return env

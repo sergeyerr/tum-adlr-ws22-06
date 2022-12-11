@@ -1,0 +1,12 @@
+name: "pearl"
+soft_target_tau: 1E-2 # for SAC target network update
+policy_lr: 1E-3
+qf_lr: 1E-3
+vf_lr: 1E-3
+context_lr: 1E-3
+kl_lambda: 1.0 # weight on KL divergence term in encoder loss
+policy_mean_reg_weight: 1E-3
+policy_std_reg_weight: 1E-3
+policy_pre_activation_weight: 0
+use_information_bottleneck: True # False makes latent context deterministic
+use_next_obs_in_context: False # use next obs if it is useful in distinguishing tasks

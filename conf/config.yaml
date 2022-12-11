@@ -41,7 +41,7 @@ validation:
   log_actions: True
 
 env:
-  determenistic_reset: True
+  deterministic_reset: True
   seed: 0
   random: True
   random_type: 'Uniform' # 'Uniform', 'Gaussian'

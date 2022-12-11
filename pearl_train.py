@@ -1,4 +1,3 @@
-import argparse
 import json
 import os
 import random
@@ -6,6 +5,7 @@ from collections import deque
 
 import gymnasium as gym
 import hydra
+
 import numpy as np
 import torch
 import torch as T
@@ -15,7 +15,6 @@ from EnvironmentUtils import LunarEnvRandomFabric, LunarEnvFixedFabric, LunarEnv
 from DataHandling.EnvironmentSampler import Sampler
 
 import wandb
-from Noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, ZeroNoise
 from agents import PEARLAgent
 
 from utils import print_run_info, validate
@@ -23,25 +22,23 @@ from utils import print_run_info, validate
 device = T.device('cuda' if T.cuda.is_available() else 'cpu')
 
 
-@hydra.main(version_base=None, config_path="conf", config_name="config")
 class PEARLExperiment(object):
 
-    def __init__(self, cfg: DictConfig):
-        self.episode_reward = 0.0
-        self.task_idx = 0
+    def __init__(self, cfg):
         self.cfg = cfg
-        self.agent_args = cfg.agent
-        self.env_args = cfg.env
-        self.validation_args = cfg.validation
-        self.training_args = cfg.training
-        # env = LunarRandomizerWrapper(pass_env_params=training_args.pass_env_parameters, **env_args)
-        self.train_env_fabric = LunarEnvRandomFabric(pass_env_params=self.training_args.pass_env_parameters, **self.env_args)
-        self.test_env_fabric = LunarEnvRandomFabric(pass_env_params=self.training_args.pass_env_parameters,
+        self.training_args = cfg["training"]
+        print(self.training_args)
+        self.agent_args = cfg["agent"]
+        print(self.agent_args)
+        self.env_args = cfg["env"]
+        self.validation_args = cfg["validation"]
+        self.train_env_fabric = LunarEnvRandomFabric(pass_env_params=self.training_args["pass_env_parameters"], **self.env_args)
+        self.test_env_fabric = LunarEnvRandomFabric(pass_env_params=self.training_args["pass_env_parameters"],
                                               render_mode='rgb_array',
                                               **self.env_args)
         # creates list of env with different parametrizations
-        self.train_tasks = self.create_train_tasks(self.train_env_fabric, self.training_args.num_train_tasks)
-        self.eval_tasks = self.create_train_tasks(self.test_env_fabric, self.training_args.num_eval_tasks)
+        self.train_tasks = self.create_train_tasks(self.train_env_fabric, self.training_args["num_train_tasks"])
+        self.eval_tasks = self.create_train_tasks(self.test_env_fabric, self.training_args["num_eval_tasks"])
         self.n_actions = self.train_tasks[0].action_space.shape[0]\
             if type(self.train_tasks[0].action_space) == gym.spaces.box.Box else self.train_tasks[0].action_space.n
         env_info = {"input_dims": self.train_tasks[0].observation_space.shape, "n_actions": self.n_actions,
@@ -49,7 +46,9 @@ class PEARLExperiment(object):
 
         self.agent = PEARLAgent(**OmegaConf.to_object(self.agent_args), **OmegaConf.to_object(self.training_args),
                                 **env_info)
-        self.sampler = Sampler(self.train_tasks, self.eval_tasks, self.agent.pi, self.training_args.max_path_length)
+        self.sampler = Sampler(self.train_tasks, self.eval_tasks, self.agent.pi, self.training_args["max_path_length"])
+        self.episode_reward = 0.0
+        self.task_idx = 0
 
     def run(self):
 
@@ -233,15 +232,10 @@ class PEARLExperiment(object):
 
     # generates rollout
     def collect_data(self, num_samples, resample_z_rate, update_posterior_rate, add_to_enc_buffer=True):
-        '''
-        get trajectories from current env in batch mode with given policy
-        collect complete trajectories until the number of collected transitions >= num_samples
-        :param agent: policy to rollout
-        :param num_samples: total number of transitions to sample
-        :param resample_z_rate: how often to resample latent context z (in units of trajectories)
-        :param update_posterior_rate: how often to update q(z | c) from which z is sampled (in units of trajectories)
-        :param add_to_enc_buffer: whether to add collected data to encoder replay buffer
-        '''
+
+        # get trajectories from current env in batch mode with given policy
+        # collect complete trajectories until the number of collected transitions >= num_samples
+
         # start from the prior
         self.agent.pi.clear_z()
 
@@ -267,6 +261,13 @@ class PEARLExperiment(object):
                 self.agent.pi.infer_posterior(context)
         self._n_env_steps_total += num_transitions
 
+@hydra.main(version_base=None, config_path="conf", config_name="config")
+def start(cfg: DictConfig):
+    config_dict = OmegaConf.to_object(cfg)
+    experiment = PEARLExperiment(config_dict)
+    experiment.run()
+    # experiment = hydra.utils.instantiate(cfg.agent, cfg)
+    # experiment.run()
+
 if __name__ == '__main__':
-    exp = PEARLExperiment()
-    exp.run()
+    start()

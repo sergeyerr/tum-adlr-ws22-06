@@ -1,25 +1,25 @@
-meta_batch: 64
-num_iterations: 100
+meta_batch: 64 # number of tasks to average the gradient across
+num_iterations: 100 # number of data sampling / training iterates
 num_train_steps_per_itr: 1000
-num_initial_steps: 100
-num_tasks_sample: 100
-num_steps_prior: 100
-num_steps_posterior: 100
-num_extra_rl_steps_posterior: 100
-num_evals: 10
-num_steps_per_eval: 1000
-batch_size: 1024
-embedding_batch_size: 1024
-embedding_mini_batch_size: 1024
-max_path_length: 1000
-discount: 0.99
+num_initial_steps: 100 # number of transitions collected per task before training
+num_tasks_sample: 100 # number of randomly sampled tasks to collect data for each iteration
+num_steps_prior: 100 # number of transitions to collect per task with z ~ prior
+num_steps_posterior: 100 # number of transitions to collect per task with z ~ posterior
+num_extra_rl_steps_posterior: 100 # number of additional transitions to collect per task with z ~ posterior that are only used to train the policy and NOT the encoder
+num_evals: 10 # number of independent evals
+num_steps_per_eval: 1000  # nuumber of transitions to eval on
+batch_size: 1024 # number of transitions in the RL batch
+embedding_batch_size: 1024 # number of transitions in the context batch
+embedding_mini_batch_size: 1024 # number of context transitions to backprop through (should equal the arg above except in the recurrent encoder case)
+max_path_length: 1000 # max path length for this environment
+discount: 0.99 # RL discount factor
 replay_buffer_size: 1000000
-reward_scale: 1
-num_exp_traj_eval: 1
-update_post_train: 1
+reward_scale: 1.0 # scale rewards before constructing Bellman update, effectively controls weight on the entropy of the policy
+num_exp_traj_eval: 1 # how many exploration trajs to collect before beginning posterior sampling at test time
+update_post_train: 1 # how often to resample the context when collecting data during training (in trajectories)
 eval_deterministic: True
 save_replay_buffer: False
 save_algorithm: False
 save_environment: False
 render_eval_paths: False
-dump_eval_paths: False
+dump_eval_paths: False # whether to save evaluation trajectories
