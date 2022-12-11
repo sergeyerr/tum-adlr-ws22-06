@@ -1,6 +1,8 @@
 from collections import deque
 from random import choices
 import numpy as np
+import torch
+
 
 class ReplayBuffer(object):
     def __init__(self, capacity):
@@ -13,7 +15,6 @@ class ReplayBuffer(object):
     def get_batch(self, batch_size):
         sample = choices(self.queue, k=batch_size)
         out_dict = {'o':[],'a':[],'r':[],'o2':[],'d':[]}
-        # TODO I think this is wrong. We do not need the loop
         for o, a, r, o2, d in sample:
             out_dict['o'].append(o)
             out_dict['a'].append(a)
@@ -44,12 +45,41 @@ class MultiTaskReplayBuffer(object):
         self.task_buffers[task_id].record(obs, action, reward, new_obs, done)
 
     def random_batch(self, task_id, batch_size):
-        self.task_buffers[task_id].get_batch(batch_size)
+        out_dict = self.task_buffers[task_id].get_batch(batch_size)
+        return out_dict
 
     # TODO sampling context and sampling sac could be moved here instead
     # so you can call encoder_replay_buffer.sample_random_batch(indices, sample_context=True)
-    def sample_random_batch(self, task_indices, sample_context=False):
-        pass
+    def sample_random_batch(self, task_indices, batch_size, sample_context=False, use_next_obs_in_context=False):
+        # out dimensions: [(num tasks, batch size, feature_dim) for each feature (observation, action, reward ...)]
+        out = []
+        for idx in task_indices:
+            out.append(self.random_batch(idx, batch_size))
+        # out has now following form:[dict1, dict2, ...] with num_tasks many dicts
+        # each dict is: {"o":[[*,*,*,*,*], [*,*,*,*,*], [*,*,*,*,*]], "a":[[*,*], [*,*], [*,*]], "r"...]
+        # each key has a nested list as value with dim(batch_size, feature_dim)
+        outer_list = []
+        inner_list = []
+        for dictionary in out:
+            inner_list.clear()
+            for k, v in dictionary.items():
+                inner_list.append(torch.tensor(v))
+            outer_list.append(inner_list)
+        # outer_list has now following structure: [[tensor(batch_size, obs_dim), tensor(batch_size, act_dim)], ...]
+        outer_list = [[x[i][None, ...] for x in outer_list] for i in range(len(outer_list[0]))]
+        # outer_list now consists of lists each holding same feature from different tasks as tensors
+        # the [None, ...] operations makes sure that in the following contactenation we receive a 3 dimensonal tensor
+        out = [torch.cat(x, dim=0) for x in outer_list]
+        # out dimensions: [(num tasks, batch size, feature_dim) for each feature (observation, action, reward ...)]
+        # if we are sampling the context the output dimension is
+        # tensor(num_tasks, batch_size, all_feature_dim_concatenated)
+        # we neglect the terminals (thus :-1) and or the next_obs (:-2)
+        if sample_context:
+            if use_next_obs_in_context:
+                out = torch.cat(out[:-1], dim=2)
+            else:
+                out = torch.cat(out[:-2], dim=2)
+        return out
 
 
     def clear_buffer(self, task_id):
