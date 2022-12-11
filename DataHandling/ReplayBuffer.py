@@ -9,7 +9,14 @@ class ReplayBuffer(object):
         self.queue = deque(maxlen=capacity)
 
     def record(self, obs, action, reward, new_obs, done):
-        entry = (obs, action, reward, new_obs, done)
+        # for the case where we record a path not a single transition
+        if len(obs.shape) == 2:
+            for o, a, r, no, d in zip(obs, action, reward, new_obs, done):
+                entry = (o, a, r, no, d)
+                self.queue.append(entry)
+        else:
+            entry = (obs, action, reward, new_obs, done)
+
         self.queue.append(entry)
 
     def get_batch(self, batch_size):
@@ -28,8 +35,15 @@ class ReplayBuffer(object):
         out_dict['d'] = np.array(out_dict['d'])
         return out_dict
 
+    # TODO
+    def add_path(self, path):
+        for i, (obs, action, reward, next_obs, terminal)\
+                in enumerate(zip(path["o"], path["a"], path["r"], path["o2"], path["d"])):
+            self.record(obs, action, reward, next_obs, terminal)
+
     def clear(self):
         self.queue.clear()
+
     def size(self):
         return len(self.queue)
 
@@ -44,6 +58,10 @@ class MultiTaskReplayBuffer(object):
     def record(self, task_id, obs, action, reward, new_obs, done):
         self.task_buffers[task_id].record(obs, action, reward, new_obs, done)
 
+    def add_paths(self, task, paths):
+        for path in paths:
+            self.task_buffers[task].add_path(path)
+
     def random_batch(self, task_id, batch_size):
         out_dict = self.task_buffers[task_id].get_batch(batch_size)
         return out_dict
@@ -52,6 +70,9 @@ class MultiTaskReplayBuffer(object):
     # so you can call encoder_replay_buffer.sample_random_batch(indices, sample_context=True)
     def sample_random_batch(self, task_indices, batch_size, sample_context=False, use_next_obs_in_context=False):
         # out dimensions: [(num tasks, batch size, feature_dim) for each feature (observation, action, reward ...)]
+        # this is done to ensure that task_indices is iterable even if its just one integer
+        if not hasattr(task_indices, '__iter__'):
+            task_indices = [task_indices]
         out = []
         for idx in task_indices:
             out.append(self.random_batch(idx, batch_size))
@@ -80,7 +101,6 @@ class MultiTaskReplayBuffer(object):
             else:
                 out = torch.cat(out[:-2], dim=2)
         return out
-
 
     def clear_buffer(self, task_id):
         self.task_buffers[task_id].clear()

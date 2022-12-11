@@ -233,7 +233,7 @@ class ContextEncoder(nn.Module):
         self.fc1 = nn.Linear(*self.input_size, self.fc1_dims)
         self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)
         self.fc3 = nn.Linear(self.fc2_dims, self.fc3_dims)
-        self.z = nn.Linear(self.fc3_dims, self.out_size)
+        self.z_layer = nn.Linear(self.fc3_dims, self.out_size)
 
         self.optimizer = optim.Adam(self.parameters(), lr=alpha)
         self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
@@ -247,7 +247,7 @@ class ContextEncoder(nn.Module):
         value = F.relu(value)
         value = self.fc3(value)
         value = F.relu(value)
-        latent_z = self.z(value)
+        latent_z = self.z_layer(value)
 
         return latent_z
 
@@ -271,7 +271,7 @@ class PEARLPolicy(nn.Module):
         self.z = None
         self.context = None
         # TODO pass this to init
-        self.use_next_obs_in_context = False
+        self.use_next_obs_in_context = encoder_dict["use_next_obs_in_context"]
 
         self.clear_z()
 
@@ -296,10 +296,44 @@ class PEARLPolicy(nn.Module):
         r = torch.from_numpy(r)
         no = torch.from_numpy(no)
 
+        # TODO the environment does not return a 3 dimensional array so dim=2 will throw an error...
+        # environment returns 1 d arrays
+        # this concatenates the features along the feature dimension
+        # o = [[[1, 2, 4],
+        #      [1, 2, 4],
+        #      [1, 2, 4]],
+        #     [[1, 2, 4],
+        #      [1, 2, 4],
+        #      [1, 2, 4]]]
+        # a = [[[1, 2],
+        #       [1, 2],
+        #       [1, 2]],
+        #      [[1, 2],
+        #       [1, 2],
+    #          [1, 2]]]
+        # data = [[[1, 2, 4, 1, 2],
+        #          [1, 2, 4, 1, 2],
+        #          [1, 2, 4, 1, 2]],
+        #         [[1, 2, 4, 1, 2],
+        #          [1, 2, 4, 1, 2],
+        #          [1, 2, 4, 1, 2]]]
         if self.use_next_obs_in_context:
             data = torch.cat([o, a, r, no], dim=2)
         else:
             data = torch.cat([o, a, r], dim=2)
+        # this concatenates the context along the batch dimension
+        # context = [[[1, 2, 4, 1, 2], first task
+        #          [1, 2, 4, 1, 2], second transition from first task
+        #          [1, 2, 4, 1, 2],
+        #          [1, 2, 4, 1, 2],
+        #          [1, 2, 4, 1, 2],
+        #          [1, 2, 4, 1, 2]],
+        #         [[1, 2, 4, 1, 2], second task
+        #          [1, 2, 4, 1, 2],
+        #          [1, 2, 4, 1, 2],
+        #          [1, 2, 4, 1, 2],
+        #          [1, 2, 4, 1, 2],
+        #          [1, 2, 4, 1, 2]]]
         if self.context is None:
             self.context = data
         else:

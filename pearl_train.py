@@ -49,7 +49,7 @@ class PEARLExperiment(object):
 
         self.agent = PEARLAgent(**OmegaConf.to_object(self.agent_args), **OmegaConf.to_object(self.training_args),
                                 **env_info)
-        self.sampler = Sampler
+        self.sampler = Sampler(self.train_tasks, self.agent.pi, self.training_args.max_path_length)
 
     def run(self):
 
@@ -136,7 +136,7 @@ class PEARLExperiment(object):
                     self.collect_data(self.num_extra_rl_steps_posterior, 1, self.update_post_train, add_to_enc_buffer=False)
 
             # Sample train tasks and compute gradient updates on parameters.
-            for train_step in range(self.training_args.train_batchesser):
+            for train_step in range(self.training_args.train_batches):
                 indices = np.random.choice(self.training_args.num_train_tasks, self.training_args.meta_batch)
                 loss = self.agent.optimize(indices)
                 # Loss information kept for monitoring purposes during training
@@ -178,7 +178,10 @@ class PEARLExperiment(object):
 
         num_transitions = 0
         while num_transitions < num_samples:
-            paths, n_samples = self.sampler.obtain_samples(max_samples=num_samples - num_transitions,
+            # paths is a list or dictionaries
+            # each dictionary is a path. The values for the keys are two-dimensional np arrays
+            paths, n_samples = self.sampler.obtain_samples(task_idx=self.task_idx,
+                                                           max_samples=num_samples - num_transitions,
                                                            max_trajs=update_posterior_rate,
                                                            accum_context=False,
                                                            resample=resample_z_rate)
@@ -187,7 +190,11 @@ class PEARLExperiment(object):
             if add_to_enc_buffer:
                 self.agent.encoder_replay_buffer.add_paths(self.task_idx, paths)
             if update_posterior_rate != np.inf:
-                context = self.agent.sample_context(self.task_idx)
+                context = self.encoder_replay_buffer.sample_random_batch(self.task_idx,
+                                                                         self.training_args.embedding_batch_size,
+                                                                         sample_context=True,
+                                                                         use_next_obs_in_context=
+                                                                         self.training_args.use_next_obs_in_context)
                 self.agent.pi.infer_posterior(context)
         self._n_env_steps_total += num_transitions
 

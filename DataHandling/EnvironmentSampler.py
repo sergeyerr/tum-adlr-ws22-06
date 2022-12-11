@@ -7,13 +7,13 @@ class Sampler(object):
     # this sampler will use the current policy and environment/task to create rollout
     # this will affect the environment
 
-    def __init__(self, env, policy, max_path_length):
-        self.env = env
+    def __init__(self, train_tasks, policy, max_path_length):
+        self.train_tasks = train_tasks
         # don't forget to update policy when it is changed
         self.policy = policy
         self.max_path_length = max_path_length
 
-    def obtain_samples(self, max_samples=np.inf, max_trajs=np.inf, accum_context=True, resample=1):
+    def obtain_samples(self, task_idx, max_samples=np.inf, max_trajs=np.inf, accum_context=True, resample=1):
         """
         Obtains samples in the environment until either we reach either max_samples transitions or
         num_traj trajectories.
@@ -25,7 +25,7 @@ class Sampler(object):
         n_steps_total = 0
         n_trajs = 0
         while n_steps_total < max_samples and n_trajs < max_trajs:
-            path = self.rollout(self.env, policy, max_path_length=self.max_path_length, accum_context=accum_context)
+            path = self.rollout(task_idx, policy, max_path_length=self.max_path_length, accum_context=accum_context)
             # save the latent context that generated this trajectory
             path['context'] = policy.z.detach().cpu().numpy()
             paths.append(path)
@@ -36,43 +36,23 @@ class Sampler(object):
                 policy.sample_z()
         return paths, n_steps_total
 
-    def rollout(self, env, agent, max_path_length=np.inf, accum_context=True):
-        """
-        The following value for the following keys will be a 2D array, with the
-        first dimension corresponding to the time dimension.
-         - observations
-         - actions
-         - rewards
-         - next_observations
-         - terminals
-        The next two elements will be lists of dictionaries, with the index into
-        the list being the index into the time
-         - agent_infos
-         - env_infos
-        :param env:
-        :param agent:
-        :param max_path_length:
-        :param accum_context: if True, accumulate the collected context
-        :param animated:
-        :param save_frames: if True, save video of rollout
-        :return:
-        """
+    def rollout(self, task_idx, policy, max_path_length=np.inf, accum_context=True):
+
         observations = []
         actions = []
         rewards = []
         terminals = []
-        agent_infos = []
-        env_infos = []
+        env = self.train_tasks[task_idx]
         o = env.reset()
         next_o = None
         path_length = 0
 
         while path_length < max_path_length:
-            a = agent.get_action(o)
+            a = policy.get_action(o)
             next_o, r, d, env_info = env.step(a)
             # update the agent's current context
             if accum_context:
-                agent.update_context([o, a, r, next_o, d, env_info])
+                policy.update_context([o, a, r, next_o, d, env_info])
             observations.append(o)
             rewards.append(r)
             terminals.append(d)
@@ -92,15 +72,13 @@ class Sampler(object):
         next_observations = np.vstack(
             (
                 observations[1:, :],
-                np.expand_dims(next_o, 0)
+                np.expand_dims(next_o, 0)  # this expanditure might be a problem.
             )
         )
         return dict(
-            observations=observations,
-            actions=actions,
-            rewards=np.array(rewards).reshape(-1, 1),
-            next_observations=next_observations,
-            terminals=np.array(terminals).reshape(-1, 1),
-            agent_infos=agent_infos,
-            env_infos=env_infos,
+            o=observations,  # np.array [[1,2,4,5],[1,2,4,5],[1,2,4,5],...]
+            a=actions,
+            r=np.array(rewards).reshape(-1, 1),  # [[1],[1.4],[34],...]
+            o2=next_observations,
+            d=np.array(terminals).reshape(-1, 1),  # [[false],[false],[true],...]
         )

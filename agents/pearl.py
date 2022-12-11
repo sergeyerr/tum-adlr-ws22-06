@@ -42,6 +42,7 @@ class PEARLAgent(SACAgent):
         self.num_steps_posterior = kwargs["num_steps_posterior"]
         self.num_extra_rl_steps_posterior = kwargs["num_extra_rl_steps_posterior"]
         self.embedding_mini_batch_size = kwargs["embedding_mini_batch_size"]
+        self.use_next_obs_in_context = kwargs["use_next_obs_in_context"]
         self.pi = Networks.PEARLPolicy(alpha, encoder_dict=encoderParams, policy_dict=policyParams)
         # stores experience
         self.replay_buffer = MultiTaskReplayBuffer(capacity, num_tasks)
@@ -52,49 +53,12 @@ class PEARLAgent(SACAgent):
         self.vib_criterion = torch.nn.MSELoss()
         self.l2_reg_criterion = torch.nn.MSELoss()
 
-
-
-    # TODO figure out the shape of data, try vectorizing everything
-    def sample_sac(self, task_indeces):
-        ''' sample batch of training data from a list of tasks for training the actor-critic '''
-        # this batch consists of transitions sampled randomly from replay buffer
-        # rewards are always dense
-        batches = [ptu.np_to_pytorch_batch(self.replay_buffer.random_batch(idx, batch_size=self.batch_size)) for idx in
-                   task_indeces]
-        unpacked = [self.unpack_batch(batch) for batch in batches]
-        # group like elements together
-        unpacked = [[x[i] for x in unpacked] for i in range(len(unpacked[0]))]
-        unpacked = [torch.cat(x, dim=0) for x in unpacked]
-        return unpacked
-
-    # TODO figure out the shape of data, try vectorizing everything
-    def sample_context(self, indices):
-        ''' sample batch of context from a list of tasks from the replay buffer '''
-        # make method work given a single task index
-        if not hasattr(indices, '__iter__'):
-            indices = [indices]
-        batches = [ptu.np_to_pytorch_batch(
-            self.enc_replay_buffer.random_batch(idx, batch_size=self.embedding_batch_size, sequence=self.recurrent)) for
-                   idx in indices]
-        context = [self.unpack_batch(batch, sparse_reward=self.sparse_rewards) for batch in batches]
-        # group like elements together
-        context = [[x[i] for x in context] for i in range(len(context[0]))]
-        context = [torch.cat(x, dim=0) for x in context]
-        # full context consists of [obs, act, rewards, next_obs, terms]
-        # if dynamics don't change across tasks, don't include next_obs
-        # don't include terminals in context
-        if self.use_next_obs_in_context:
-            context = torch.cat(context[:-1], dim=2)
-        else:
-            context = torch.cat(context[:-2], dim=2)
-        return context
-
-
     # performs one optimization step of agent
     def optimize(self, task_indices):
 
         # sample context batch
-        context = self.sample_context(task_indices)
+        context = self.encoder_replay_buffer.sample_random_batch(task_indices, sample_context=True,
+                                                                 use_next_obs_in_context=self.use_next_obs_in_context)
 
         # zero out context and hidden encoder state
         self.pi.clear_z(num_tasks=len(task_indices))
@@ -103,7 +67,7 @@ class PEARLAgent(SACAgent):
         num_tasks = len(task_indices)
 
         # data is (task, batch, feat)
-        obs, actions, rewards, next_obs, terms = self.sample_sac(task_indices)
+        obs, actions, rewards, next_obs, terms = self.replay_buffer.sample_random_batch(task_indices)
 
         # run inference in networks
         policy_outputs, task_z = self.pi(obs, context)
