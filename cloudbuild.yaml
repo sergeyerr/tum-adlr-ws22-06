@@ -3,7 +3,7 @@ steps:
   entrypoint: bash
   args:
     - -c
-    - echo WANDB_KEY
+    - echo $WANDB_KEY
    # - |
     #docker build . --build-arg WANDB_KEY=$$WANDB_KEY -t europe-docker.pkg.dev/tum-adlr-ws22-06/adlr/train_contrainer
   #args: [ 'build', '.',  '--build-arg', 'WANDB_KEY=WANDB_KEY',  '-t', 'europe-docker.pkg.dev/tum-adlr-ws22-06/adlr/train_contrainer' ]
