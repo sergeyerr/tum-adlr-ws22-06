@@ -4,7 +4,7 @@ steps:
   args:
     - -c
     - |
-      docker build . --build-arg WANDB_KEY=$$WANDB_KEY -t europe-docker.pkg.dev/tum-adlr-ws22-06/adlr/train_contrainer
+      docker build . --build-arg WANDB_KEY=WANDB_KEY -t europe-docker.pkg.dev/tum-adlr-ws22-06/adlr/train_contrainer
   #args: [ 'build', '.',  '--build-arg', 'WANDB_KEY=WANDB_KEY',  '-t', 'europe-docker.pkg.dev/tum-adlr-ws22-06/adlr/train_contrainer' ]
   secretEnv: ['WANDB_KEY']
 availableSecrets:
