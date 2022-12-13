@@ -13,6 +13,7 @@ import torch.nn as nn
 from omegaconf import DictConfig, OmegaConf
 from EnvironmentUtils import LunarEnvRandomFabric, LunarEnvFixedFabric, LunarEnvHypercubeFabric
 from DataHandling.EnvironmentSampler import Sampler
+from Noise import ZeroNoise
 
 import wandb
 from agents import PEARLAgent
@@ -27,21 +28,30 @@ class PEARLExperiment(object):
     def __init__(self, cfg):
         self.cfg = cfg
         self.training_args = cfg["training"]
-        print(f"training args {json.dumps(self.training_args, indent=4)}")
+        # print(f"training args {json.dumps(self.training_args, indent=4)}")
         self.agent_args = cfg["agent"]
-        print(f"agent args{json.dumps(self.agent_args, indent=4)}")
+        # print(f"agent args{json.dumps(self.agent_args, indent=4)}")
         self.env_args = cfg["env"]
-        print(f"env args{json.dumps(self.env_args, indent=4)}")
+        # print(f"env args{json.dumps(self.env_args, indent=4)}")
         self.validation_args = cfg["validation"]
-        print(f"validation args{json.dumps(self.validation_args, indent=4)}")
+        # print(f"validation args{json.dumps(self.validation_args, indent=4)}")
 
         self.train_env_fabric = LunarEnvRandomFabric(pass_env_params=self.training_args["pass_env_parameters"],
                                                      **self.env_args)
-        self.test_env_fabric = LunarEnvRandomFabric(pass_env_params=self.training_args["pass_env_parameters"],
-                                                    render_mode='rgb_array', **self.env_args)
+
+        if self.validation_args["hypercube_validation"]:
+            self.test_env_fabric = LunarEnvHypercubeFabric(pass_env_params=self.training_args["pass_env_parameters"],
+                                                      render_mode= 'rgb_array',
+                                                      points_per_axis=self.validation_args["hypercube_points_per_axis"],
+                                                      **self.env_args)
+            self.validation_args["eval_eps"] = self.test_env_fabric.number_of_test_points()
+        else:
+            self.test_env_fabric = LunarEnvRandomFabric(env_params=self.env_args, pass_env_params=self.training_args["pass_env_parameters"],
+                                                   render_mode= 'rgb_array')
+
         # creates list of env with different parametrizations
         self.train_tasks = self.create_train_tasks(self.train_env_fabric, self.training_args["n_train_tasks"])
-        self.eval_tasks = self.create_train_tasks(self.test_env_fabric, self.training_args["n_eval_tasks"])
+        self.eval_tasks = self.create_train_tasks(self.test_env_fabric, self.validation_args["eval_eps"])
 
         self.n_actions = int(np.prod(self.train_tasks[0].action_space.shape))\
             if type(self.train_tasks[0].action_space) == gym.spaces.box.Box else self.train_tasks[0].action_space.n
@@ -97,6 +107,10 @@ class PEARLExperiment(object):
                 f"================= {f'Sending weights to W&B every {temp} batch'} =================")
 
         # TODO check if I can incorporate noise stuff here to make it same as baseline
+        noise = ZeroNoise(self.n_actions)
+
+        print_run_info(self.train_tasks[0], self.agent, self.agent_args, self.training_args, self.env_args,
+                       self.validation_args, noise)
 
         reward_history = deque(maxlen=100)
 
@@ -115,6 +129,7 @@ class PEARLExperiment(object):
                     # TODO why do this if we clear encoder replay buffer later
                     self.collect_data(self.training_args["num_initial_steps"], 1, np.inf)
             # Sample data from train tasks.
+            print('Sample data from train tasks')
             for i in range(self.training_args["num_tasks_sample"]):
                 idx = np.random.randint(self.training_args["n_train_tasks"])
                 self.task_idx = idx
@@ -151,21 +166,25 @@ class PEARLExperiment(object):
             if episode % self.validation_args["eval_interval"] == 0:
                 # TODO ensure that evalute returns true when agent finishes environment
                 # TODO also make sure to render and safe the gifs
-                solved = self.evaluate(episode)
+                # solved = self.evaluate(episode)
+                solved = validate(self.agent, self.validation_args, experiment_path, episode,
+                                  self.test_env_fabric, pearl=True)
                 if solved:
                     break
 
     def evaluate(self, episode):
 
-        indices = np.random.choice(range(self.training_args["n_train_tasks"]), self.training_args["n_eval_tasks"])
+        indices = np.random.choice(range(self.training_args["n_train_tasks"]), self.validation_args["eval_eps"])
+        print(f"evaluating onf {len(indices)} training tasks")
         train_returns = []
         ### eval train tasks with posterior sampled from the training replay buffer
+        print("eval train tasks with posterior sampled from the training replay buffer")
         for idx in indices:
             self.task_idx = idx
             env = self.train_tasks[self.task_idx]
             env.reset()
             paths = []
-            for _ in range(self.training_args["num_steps_per_eval"] // self.training_args["max_path_length"]):
+            for _ in range(self.training_args["num_steps_per_eval"] // self.training_args["max_path_length"]): # this is 1
                 context = self.agent.encoder_replay_buffer.sample_random_batch(self.task_idx,
                                                                                self.training_args["embedding_batch_size"],
                                                                                sample_context=True,
@@ -181,14 +200,28 @@ class PEARLExperiment(object):
 
             mean_reward = np.mean([sum(path["r"]) for path in paths])
             train_returns.append(mean_reward)
+        # if self.validation_args["log_actions"]:
+            #steps = range(len(path["o"]))
+            #actions_main = path["a"][:, 0]
+            #actions_left_right = path["a"][:, 1]
+            #wandb.log({"Validation after episode": episode,
+                       # "Gravity": env.gravity,
+                      # "Wind": env.enable_wind,
+                       #"Wind power": env.wind_power,
+                       #"Turbulence power": env.turbulence_power,
+                       # "Action plot":  wandb.plot.line_series(xs=steps, ys=[actions_main, actions_left_right],
+                                                              #  keys=["Main engine", "left/right engine"],
+                                                               # xname="step")})
         train_returns = np.mean(train_returns)
 
         ### eval train tasks with on-policy data to match eval of test tasks
+        print("eval train tasks with on-policy data to match eval of test tasks")
         train_final_returns, train_online_returns = self.eval_rollout(indices, episode)
         print('train online returns')
         print(train_online_returns)
 
         ### test tasks
+        print("test tasks")
         test_final_returns, test_online_returns = self.eval_rollout(range(len(self.eval_tasks)), episode, evalu=True)
         print('test online returns')
         print(test_online_returns)
@@ -200,8 +233,8 @@ class PEARLExperiment(object):
             all_rets = []
             for r in range(self.training_args["num_evals"]):
                 paths = self.collect_paths(idx, evalu=evalu)
-                mean_reward = np.mean([sum(path["r"]) for path in paths])
-                all_rets.append(mean_reward)
+                sum_reward = [sum(path["r"]) for path in paths]
+                all_rets.append(sum_reward)
             final_returns.append(np.mean([a[-1] for a in all_rets]))
             # record online returns for the first n trajectories
             n = min([len(a) for a in all_rets])
@@ -237,7 +270,6 @@ class PEARLExperiment(object):
             num_trajectories += 1
 
             if num_trajectories >= self.training_args["num_exp_traj_eval"]:
-                context = self.agent.pi.context
                 self.agent.pi.infer_posterior(self.agent.pi.context)
 
         return paths
@@ -277,8 +309,7 @@ def start(cfg: DictConfig):
     config_dict = OmegaConf.to_object(cfg)
     experiment = PEARLExperiment(config_dict)
     experiment.run()
-    # experiment = hydra.utils.instantiate(cfg.agent, cfg)
-    # experiment.run()
+
 
 if __name__ == '__main__':
     start()

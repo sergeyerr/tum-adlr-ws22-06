@@ -44,25 +44,40 @@ def print_run_info(env, agent, agent_args, training_args, env_args, validation_a
 
     
     
-def validate(agent, validation_args, experiment_path, episode, test_env_fabric):
+def validate(agent, validation_args, experiment_path, episode, test_env_fabric, pearl=False):
     '''
     doing all the validation stuff + logging
     returns, whether the env is solved
     '''
     stop_reward = []
-    for evaluation_episode in range(validation_args.eval_eps):
+    if pearl:
+        evaluation_episodes = range(validation_args["eval_eps"])
+        record_video_on_eval = validation_args["record_video_on_eval"]
+        log_actions = validation_args["log_actions"]
+        validation_episode_length = validation_args["validation_episode_length"]
+        eval_stop_condition = validation_args["eval_stop_condition"]
+    else:
+        evaluation_episodes = range(validation_args.eval_eps)
+        record_video_on_eval = validation_args.record_video_on_eval
+        log_actions = validation_args.log_actions
+        validation_episode_length = validation_args.validation_episode_length
+        eval_stop_condition = validation_args.eval_stop_condition
+
+    # TODO we need to do multiple evaluations per task!
+
+    for evaluation_episode in evaluation_episodes:
         # TODO: specify occurencies of vids (hydra, conditional parameter)
         # use experiment_path folder
-        if validation_args.record_video_on_eval and evaluation_episode == 0:
+        if record_video_on_eval and evaluation_episode == 0:
             # create tmp env with videos
             video_path = os.path.join(experiment_path, "videos", str(episode))
             test_env = RecordVideo(test_env_fabric.generate_env(), video_path)
         else:
             test_env = test_env_fabric.generate_env()
         gravity, enable_wind, wind_power, turbulence_power = test_env.gravity, test_env.enable_wind, test_env.wind_power, test_env.turbulence_power
-            
+
         # log step-action-reward plot for each validation episode
-        if validation_args.log_actions:
+        if log_actions:
             steps = []
             # first action, second action, reward
             actions_main = []
@@ -71,44 +86,59 @@ def validate(agent, validation_args, experiment_path, episode, test_env_fabric):
         obs, info = test_env.reset()
         rewards = 0
 
-        for step in range(validation_args.validation_episode_length):
+        if pearl:
+            agent.pi.clear_z()
+
+        for step in range(validation_episode_length):
 
             # Get deterministic action
             with T.no_grad():
-                action = agent.action(obs, addNoise=False)
-                
+                if pearl:
+                    action = agent.pi.get_action(obs, deterministic=True)
+                else:
+                    action = agent.action(obs, addNoise=False)
+
 
             # Take step in environment
             new_obs, reward, done, _, _ = test_env.step(action)
+
+            if pearl:
+                agent.pi.update_context([obs, action, reward, new_obs])
 
             # Update obs
             obs = new_obs
 
             # Update rewards
             rewards += reward
-            
-            if validation_args.log_actions:
+
+            if log_actions:
                 steps.append(step)
                 actions_main.append(action[0])
                 actions_left_right.append(action[1])
                 #rewards_steps.append(reward)
 
+            if pearl and evaluation_episode > validation_args["num_exp_traj_eval"]:
+                agent.pi.infer_posterior(agent.pi.context)
+
             # End episode if done
             if done:
                 break
 
+        if pearl:
+            agent.pi.sample_z()
+
         stop_reward.append(rewards)
         # seems to save only the last plot
-        if validation_args.log_actions and evaluation_episode == 0:
-            wandb.log({"Validation after episode": episode, 
+        if log_actions and evaluation_episode == 0:
+            wandb.log({"Validation after episode": episode,
                         "Gravity" : gravity,
                        "Wind" : enable_wind,
                        "Wind power" : wind_power,
                        "Turbulence power" : turbulence_power,
                         "Action plot" :  wandb.plot.line_series(xs=steps, ys=[actions_main, actions_left_right], keys=["Main engine", "left/right engine"], xname="step")})
-        
-        if validation_args.record_video_on_eval and evaluation_episode == 0:
-            wandb.log({"Validation after episode": episode, 
+
+        if record_video_on_eval and evaluation_episode == 0:
+            wandb.log({"Validation after episode": episode,
                         "Gravity" : gravity,
                        "Wind" : enable_wind,
                        "Wind power" : wind_power,
@@ -118,12 +148,12 @@ def validate(agent, validation_args, experiment_path, episode, test_env_fabric):
     avg_reward = round(sum(stop_reward) / len(stop_reward), 3)
     min_reward = round(min(stop_reward), 3)
     
-    if validation_args.eval_stop_condition == "avg":  
+    if eval_stop_condition == "avg":
         stop_reward = avg_reward
-    elif validation_args.eval_stop_condition == "min":
+    elif eval_stop_condition == "min":
         stop_reward = min_reward
     else:
-        raise ValueError(f"Unknown eval_stop_condition {validation_args.eval_stop_condition}")
+        raise ValueError(f"Unknown eval_stop_condition {eval_stop_condition}")
     
     save_path = os.path.join(experiment_path, "saves")
     

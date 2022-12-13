@@ -60,7 +60,7 @@ class Sampler(object):
             # update the agent's current context
             if accum_context:
                 # note d and env_info are actually not stored
-                policy.update_context([o, a, r, next_o, d, env_info])  # I expect an error here
+                policy.update_context([o, a, r, next_o])  # I expect an error here
             observations.append(o)
             rewards.append(r)
             terminals.append(d)

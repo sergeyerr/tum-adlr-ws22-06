@@ -40,6 +40,8 @@ validation:
   validation_episode_length: 1000
   log_actions: True
 
+  num_exp_traj_eval: 1
+
 env:
   seed: 0
   deterministic_reset: True

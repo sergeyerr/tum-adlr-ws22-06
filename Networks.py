@@ -304,7 +304,7 @@ class PEARLPolicy(nn.Module):
     # TODO as expected this function is incorrect. The sizes dont make sense
     def update_context(self, inputs):
         ''' append single transition to the current context '''
-        o, a, r, no, d, info = inputs
+        o, a, r, no = inputs
 
         # These operations expand the dimensions of the arrays by two
         o = torch.from_numpy(o[None, None, ...]).to(device=self.device, dtype=torch.float)
@@ -393,12 +393,12 @@ class PEARLPolicy(nn.Module):
 
     def get_action(self, observation, deterministic=False):
         ''' sample action from the policy, conditioned on the task embedding '''
-        # TODO in sac.py we set policy.eval() before sampling
+
         z = self.z.to(self.device)
         obs = torch.from_numpy(observation).type(torch.float).to(self.device)
         obs = obs.view((-1, *obs.shape))  # enlargens by one dimension [*,*,*] -> [[*,*,*]]
         in_ = torch.cat([obs, z], dim=1)
-
+        #TODO check if reparametrize must be set to a value
         with torch.no_grad():
             action, _ = self.policy.sample_normal(in_, deterministic=deterministic)  # in_ (1,13)
         return action.cpu().detach().numpy()[0]  # action is [[a1,a2]] so [0] is [a1,a2]
