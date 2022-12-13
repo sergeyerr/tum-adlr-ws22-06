@@ -1,5 +1,9 @@
-import argparse
-import json
+import numpy as np
+from gymnasium.wrappers import RecordVideo
+import os
+import gymnasium as gym
+import torch as T
+import wandb
 import os
 import random
 from collections import deque
@@ -17,12 +21,59 @@ import wandb
 from Noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, ZeroNoise
 from agents import DDPGAgent, SACAgent, SACAgent2
 
-from utils import print_run_info, validate
 
-device = T.device('cuda' if T.cuda.is_available() else 'cpu')
+def validate_sweep(agent, validation_args, episode, test_env_fabric):
+    '''
+    truncated version of validate for sweeps, returns average reward
+    '''
+    stop_reward = []
+    for evaluation_episode in range(validation_args.eval_eps):
+        test_env = test_env_fabric.generate_env()
+        gravity, enable_wind, wind_power, turbulence_power = test_env.gravity, test_env.enable_wind, test_env.wind_power, test_env.turbulence_power
+        obs, info = test_env.reset()
+        rewards = 0
 
-@hydra.main(version_base=None, config_path="conf", config_name="config")
-def train(cfg : DictConfig):
+        for step in range(validation_args.validation_episode_length):
+
+            # Get deterministic action
+            with T.no_grad():
+                action = agent.action(obs, addNoise=False)
+                
+
+            # Take step in environment
+            new_obs, reward, done, _, _ = test_env.step(action)
+
+            # Update obs
+            obs = new_obs
+
+            # Update rewards
+            rewards += reward
+
+            # End episode if done
+            if done:
+                break
+
+        stop_reward.append(rewards)
+    
+    avg_reward = round(sum(stop_reward) / len(stop_reward), 3)
+    min_reward = round(min(stop_reward), 3)
+    
+    if validation_args.eval_stop_condition == "avg":  
+        stop_reward = avg_reward
+    elif validation_args.eval_stop_condition == "min":
+        stop_reward = min_reward
+    else:
+        raise ValueError(f"Unknown eval_stop_condition {validation_args.eval_stop_condition}")
+    
+    
+    print(f"Episode: {episode} | Average evaluation reward: {avg_reward} | Min evaluation reward: {min_reward}")
+    
+    wandb.log({"Validation after episode": episode,  "Average evaluation reward": avg_reward,
+               "Min evaluation reward": min_reward})
+    return avg_reward
+
+def train_sweep(cfg : DictConfig):
+    device = T.device('cuda' if T.cuda.is_available() else 'cpu')
     agent_args = cfg.agent
     env_args = cfg.env
     validation_args = cfg.validation
@@ -54,28 +105,8 @@ def train(cfg : DictConfig):
     #env.seed(args.seed)
     
     # Weights and biases initialization
-    wandb.init(project="ADLR randomized envs", entity="tum-adlr-ws22-06", config=OmegaConf.to_object(cfg))
+    #wandb.init(project="ADLR randomized envs", entity="tum-adlr-ws22-06", config=OmegaConf.to_object(cfg))
     
-
-    # Experiment directory storage
-    env_path = os.path.join("experiments", "LunarLanderContinuous-v2")
-    if not os.path.exists(env_path):
-        os.makedirs(env_path)
-
-    #ugly, but acceptable
-    experiment_counter = 0
-    while True:
-        try:
-            experiment_path = os.path.join(env_path, f"{experiment_name}_{experiment_counter}")
-            os.mkdir(experiment_path)
-            os.mkdir(os.path.join(experiment_path, "saves"))
-            break
-        except FileExistsError as e:
-            experiment_counter += 1
-
-    with open(os.path.join(experiment_path, 'parameters.json'), 'w') as f:
-        OmegaConf.save(cfg, f)
-
     n_actions = env.action_space.shape[0] if type(env.action_space) == gym.spaces.box.Box else env.action_space.n
     env_info = {"input_dims":env.observation_space.shape, "n_actions": n_actions, "max_action": env.action_space.high}
 
@@ -91,10 +122,10 @@ def train(cfg : DictConfig):
     agent = algorithm(**OmegaConf.to_object(agent_args), **OmegaConf.to_object(training_args),
                       **env_info)
     
-    if validation_args.log_model_wandb:
-        # assumes that the model has only one actor, we may also log different models differently
-        wandb.watch(agent.pi, log="all", log_freq=validation_args.log_model_every_training_batch)
-        print(f"================= {f'Sending weights to W&B every {validation_args.log_model_every_training_batch} batch'} =================")
+    # if validation_args.log_model_wandb:
+    #     # assumes that the model has only one actor, we may also log different models differently
+    #     wandb.watch(agent.pi, log="all", log_freq=validation_args.log_model_every_training_batch)
+    #     print(f"================= {f'Sending weights to W&B every {validation_args.log_model_every_training_batch} batch'} =================")
         
 
     #temporary variant, possible problems with SAC
@@ -105,7 +136,7 @@ def train(cfg : DictConfig):
     else:
         noise = ZeroNoise(size=n_actions)
         
-    print_run_info(env, agent, agent_args, training_args, env_args, validation_args, noise)
+    #print_run_info(env, agent, agent_args, training_args, env_args, validation_args, noise)
 
 
     counter = 0
@@ -153,8 +184,8 @@ def train(cfg : DictConfig):
                     # Loss information kept for monitoring purposes during training
                     actor_loss += loss['actor_loss']
                     critic_loss += loss['critic_loss']
-                    wandb.log({"Training episode": episode, "Batch": (episode) * training_args.train_batches + i,
-                            "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
+                    # wandb.log({"Training episode": episode, "Batch": (episode) * training_args.train_batches + i,
+                    #         "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
                 agent.update()
                 
             t += 1
@@ -164,15 +195,14 @@ def train(cfg : DictConfig):
         
                
         reward_history.append(episode_reward)
-        print(f"Training episode: {episode} Episode reward: {episode_reward} Average reward: {np.mean(reward_history)}")
-        print(f"Gravity: {gravity} Wind: {enable_wind} Wind power: {wind_power} Turbulence power: {turbulence_power}")
-        wandb.log({"Training episode": episode, "Episode reward": episode_reward, "Average reward": np.mean(reward_history), 
-                   "Gravity": gravity, "Wind": enable_wind, "Wind power": wind_power, "Turbulence power": turbulence_power})
+       # print(f"Training episode: {episode} Episode reward: {episode_reward} Average reward: {np.mean(reward_history)}")
+        #print(f"Gravity: {gravity} Wind: {enable_wind} Wind power: {wind_power} Turbulence power: {turbulence_power}")
+        # wandb.log({"Training episode": episode, "Episode reward": episode_reward, "Average reward": np.mean(reward_history), 
+        #            "Gravity": gravity, "Wind": enable_wind, "Wind power": wind_power, "Turbulence power": turbulence_power})
+        max_reward = -100000
         if episode % validation_args.eval_interval == 0:
-            solved = validate(agent, validation_args, experiment_path, episode, test_env_fabric)
-            if solved:
-                break
-                    
-                    
-if __name__=='__main__':
-    train()
+            avg_reward = validate_sweep(agent, validation_args, episode, test_env_fabric)
+            if avg_reward > max_reward:
+                max_reward = avg_reward
+    print(f"Max eval reward: {max_reward} Training episodes: {episode}")
+    wandb.log({"Max eval reward": max_reward, 'Training episodes': episode})
