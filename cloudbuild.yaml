@@ -3,12 +3,12 @@ steps:
   entrypoint: bash
   args:
     - -c
-    - docker build --build-arg WANDB_KEY=$$WANDB -t europe-docker.pkg.dev/tum-adlr-ws22-06/adlr/train_contrainer .
+    - docker build --build-arg WANDB_KEY=$$WANDB -t us-central1-docker.pkg.dev/tum-adlr-ws22-06/adlr/train_contrainer .
   #args: [ 'build', '.',  '--build-arg', 'WANDB_KEY=WANDB_KEY',  '-t', 'europe-docker.pkg.dev/tum-adlr-ws22-06/adlr/train_contrainer' ]
   secretEnv: ['WANDB']
 
 images:
-- 'europe-docker.pkg.dev/tum-adlr-ws22-06/adlr/train_contrainer'
+- 'us-central1-docker.pkg.dev/tum-adlr-ws22-06/adlr/train_contrainer'
 
 availableSecrets:
   secretManager:

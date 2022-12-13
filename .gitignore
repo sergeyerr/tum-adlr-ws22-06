@@ -4,6 +4,7 @@ outputs/*
 videos/*
 wandb/*
 *.pyc
+artifacts/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
