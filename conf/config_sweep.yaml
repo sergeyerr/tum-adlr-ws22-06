@@ -12,7 +12,7 @@ agent:
 
 training:
   pass_env_parameters: False
-  episodes: 10000
+  episodes: 501
   episode_length: 1000
   update_after: 1000
   start_steps: 1000
@@ -21,6 +21,7 @@ training:
   batch_size: 64
   min_replay_size: 1000
   replay_buffer_size: 1000000
+  random: True
   seed: 0
   noise: 'Ornstein' #'Zero','Gaussian', 'Ornstein'
   noise_param: 0.2
@@ -37,7 +38,7 @@ validation:
   
   eval_stop_condition: 'min' # 'min', 'avg': how results from eval_eps are aggregated
   eval_interval: 50
-  record_video_on_eval: True
+  record_video_on_eval: False
   validation_episode_length: 1000
   log_actions: True
 
@@ -63,7 +64,11 @@ env:
 
 
 sweep:
-  activate: False
+  activate: True
+  sweep_id: 'tum-adlr-ws22-06/adlr_sweeps/0siofi3i'
+  count: 10
+  #https://docs.wandb.ai/guides/sweeps/define-sweep-configuration
+
 
   
   
