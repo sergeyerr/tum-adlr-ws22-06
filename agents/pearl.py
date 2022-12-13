@@ -23,9 +23,6 @@ import torch
 
 class PEARLAgent(SACAgent):
 
-    #  inheriting from SACAgent to get all the networks and configs
-    #  TODO make sure to change networks input size in config file, because they also take in latent variable
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         alpha = kwargs["pi_lr"]
@@ -39,12 +36,11 @@ class PEARLAgent(SACAgent):
         policy_input_dims = kwargs["obs_dim"] + latent_dim
         self.use_next_obs_in_context = kwargs["use_next_obs_in_context"]
         hidden_neurons = []
-
-
+        # TODO understand how the encoding actually works if encoder has no bottleneck architecture
         self.pi = Networks.PEARLPolicy(alpha=alpha, latent_dim=latent_dim, policy_input_dims=policy_input_dims,
                                        encoder_in_size=encoder_in_size, max_action=kwargs["max_action"],
                                        encoder_out_size=encoder_out_size,
-                                       use_next_obs_in_context=self.use_next_obs_in_context)
+                                       use_next_obs_in_context=self.use_next_obs_in_context).to(device=self.device)
         # stores experience
         self.replay_buffer = MultiTaskReplayBuffer(capacity, num_tasks)
         self.encoder_replay_buffer = MultiTaskReplayBuffer(capacity, num_tasks)
@@ -84,10 +80,21 @@ class PEARLAgent(SACAgent):
         obs, actions, rewards, next_obs, terms = self.replay_buffer.sample_random_batch(task_indices,
                                                                                         batch_size=self.batch_size)
 
+        # important step to make sure there are no errors like "found at least two devices, cpu and cuda:0!"
+        # or "dtype mismatch"
+        context = context.to(device=self.device, dtype=torch.float)
+        obs = obs.to(dtype=torch.float, device=self.device)
+        actions = actions.to(dtype=torch.float, device=self.device)
+        rewards = rewards.to(dtype=torch.float, device=self.device)  # .view((-1, 1))
+        next_obs = next_obs.to(dtype=torch.float, device=self.device)
+        terms = terms.to(dtype=torch.float, device=self.device)  # .view((-1, 1))
+
+
         # run inference in networks
         policy_outputs, task_z = self.pi(obs, context)
-        # TODO in networks SACActor output the necessary data
+
         new_actions, policy_mean, policy_log_std, log_pi = policy_outputs[:4]
+        # tanh_action, mean, T.log(sigma), log_probs, None, sigma, None, action
 
         # flattens out the task dimension
         t, b, _ = obs.size()
@@ -97,12 +104,12 @@ class PEARLAgent(SACAgent):
 
         # Q and V networks
         # encoder will only get gradients from Q nets
-        q1_pred = self.q_1(obs, actions, task_z)
-        q2_pred = self.q_2(obs, actions, task_z)
-        v_pred = self.value(obs, task_z.detach())
+        q1_pred = self.q_1(torch.cat([obs, task_z], dim=1), actions)
+        q2_pred = self.q_2(torch.cat([obs, task_z], dim=1), actions)
+        v_pred = self.value(torch.cat([obs, task_z.detach()], dim=1))
         # get targets for use in V and Q updates
         with torch.no_grad():
-            target_v_values = self.target_value(next_obs, task_z)
+            target_v_values = self.target_value(torch.cat([next_obs, task_z], dim=1))
 
         # KL constraint on z if probabilistic
         self.pi.context_encoder.optimizer.zero_grad()
@@ -126,8 +133,8 @@ class PEARLAgent(SACAgent):
         self.pi.context_encoder.optimizer.step()
 
         # compute min Q on the new actions
-        q1 = self.q_1(obs, new_actions, task_z.detach())
-        q2 = self.q_2(obs, new_actions, task_z.detach())
+        q1 = self.q_1(torch.cat([obs, new_actions], dim=1), task_z.detach())
+        q2 = self.q_2(torch.cat([obs, new_actions], dim=1), task_z.detach())
         min_q_new_actions = torch.min(q1, q2)
 
         # vf update
@@ -141,7 +148,7 @@ class PEARLAgent(SACAgent):
         # policy update
         # n.b. policy update includes dQ/da
         policy_loss = (log_pi - min_q_new_actions).mean()
-        loss_results["actor loss"] = policy_loss.data
+        loss_results["actor_loss"] = policy_loss.data
 
         # dont know what all that regularization is
         mean_reg_loss = self.policy_mean_reg_weight * (policy_mean ** 2).mean()

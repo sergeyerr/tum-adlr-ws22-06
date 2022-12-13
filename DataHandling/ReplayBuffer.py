@@ -93,7 +93,7 @@ class MultiTaskReplayBuffer(object):
         out = [torch.cat(x, dim=0) for x in outer_list]
         # out dimensions: [(num tasks, batch size, feature_dim) for each feature (observation, action, reward ...)]
         # if we are sampling the context the output dimension is
-        # tensor(num_tasks, batch_size, all_feature_dim_concatenated)
+        # tensor(num_tasks, batch_size, all_feature_dim_concatenated)  all_feature_dim_concatenated = 11
         # we neglect the terminals (thus :-1) and or the next_obs (:-2)
         if sample_context:
             if use_next_obs_in_context:

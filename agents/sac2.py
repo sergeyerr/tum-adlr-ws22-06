@@ -64,7 +64,6 @@ class SACAgent2(SACAgent):
         sample = self.replay_buffer.get_batch(self.batch_size)
         obs, actions, rewards, new_obs, done = sample['o'], sample['a'], sample['r'], sample['o2'], sample['d']
 
-        
         # Convert samples to tensors
         obs = torch.tensor(obs, dtype=torch.float, device=self.device)
         actions = torch.tensor(actions, dtype=torch.float, device=self.device)

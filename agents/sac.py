@@ -20,10 +20,12 @@ class SACAgent(object):
         # Policy Network
         self.pi = Networks.SACActorNetwork(alpha=self.pi_lr, input_dims=self.input_dims, n_actions=self.n_actions,
                                            max_action=self.max_action).to(self.device)
-        self.q_1 = Networks.SACCriticNetwork(beta=self.q_lr, input_dims=self.input_dims, n_actions=self.n_actions)
-        self.q_2 = Networks.SACCriticNetwork(beta=self.q_lr, input_dims=self.input_dims, n_actions=self.n_actions)
-        self.value = Networks.SACValueNetwork(beta=self.q_lr, input_dims=self.input_dims)
-        self.target_value = Networks.SACValueNetwork(beta=self.q_lr, input_dims=self.input_dims)
+        self.q_1 = Networks.SACCriticNetwork(beta=self.q_lr, input_dims=self.input_dims,
+                                             n_actions=self.n_actions).to(self.device)
+        self.q_2 = Networks.SACCriticNetwork(beta=self.q_lr, input_dims=self.input_dims,
+                                             n_actions=self.n_actions).to(self.device)
+        self.value = Networks.SACValueNetwork(beta=self.q_lr, input_dims=self.input_dims).to(self.device)
+        self.target_value = Networks.SACValueNetwork(beta=self.q_lr, input_dims=self.input_dims).to(self.device)
 
         # Sync weights
         self.sync_weights()

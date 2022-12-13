@@ -1,5 +1,6 @@
 # this calls will create rollouts of agent for specific task
 import numpy as np
+import torch
 
 
 class Sampler(object):
@@ -13,6 +14,7 @@ class Sampler(object):
         # don't forget to update policy when it is changed
         self.policy = policy
         self.max_path_length = max_path_length
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     def obtain_samples(self, task_idx, max_samples=np.inf, max_trajs=np.inf, accum_context=True, resample=1,
                        deterministic=False, evalu=False):
@@ -32,7 +34,7 @@ class Sampler(object):
             # save the latent context that generated this trajectory
             path['context'] = policy.z.detach().cpu().numpy()
             paths.append(path)
-            n_steps_total += len(path['observations'])
+            n_steps_total += len(path['o'])
             n_trajs += 1
             # resample z every resample paths
             if n_trajs % resample == 0:
@@ -46,16 +48,25 @@ class Sampler(object):
         rewards = []
         terminals = []
         env = self.eval_tasks[task_idx] if evalu else self.train_tasks[task_idx]
-        o,_ = env.reset()
+        o, _ = env.reset()
         next_o = None
         path_length = 0
 
         while path_length < max_path_length:
             a = policy.get_action(o, deterministic=deterministic)
-            next_o, r, d, env_info = env.step(a)
+            next_o, r, d, env_info, _ = env.step(a)
+
+            # Convert samples to tensors
+            # next_o = torch.tensor(next_o, dtype=torch.float, device=self.device)
+            # a = torch.tensor(a, dtype=torch.float, device=self.device)
+            # r = torch.tensor(r, dtype=torch.float, device=self.device).view((-1, 1))
+            # d = torch.tensor(d, dtype=torch.float, device=self.device).view((-1, 1))
+
+            # a [*,*], o = [*,*,*,*,*,*,*,*], r float, d bool, env_info bool
             # update the agent's current context
             if accum_context:
-                policy.update_context([o, a, r, next_o, d, env_info])  # hier erwarte ich einen Fehler
+                # note d and env_info are actually not stored
+                policy.update_context([o, a, r, next_o, d, env_info])  # I expect an error here
             observations.append(o)
             rewards.append(r)
             terminals.append(d)

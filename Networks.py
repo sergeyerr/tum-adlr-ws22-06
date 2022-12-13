@@ -121,7 +121,7 @@ class SACCriticNetwork(nn.Module):
 
         self.to(self.device)
 
-    # TODO for pearl I need to contact the latent variable to the state
+
     def forward(self, state, action):
         action_value = self.fc1(T.cat([state, action], dim=1))
         action_value = F.relu(action_value)
@@ -202,30 +202,31 @@ class SACActorNetwork(nn.Module):
 
         return mu, sigma
 
-    def sample_normal(self, state, reparameterize=True, deterministic=False):
+    def sample_normal(self, state, reparameterize=True, deterministic=False, return_log_prob=False):
         mu, sigma = self.forward(state)
-        # in spinning up: torch.distributions.normal.Normal()
         probabilities = torch.distributions.normal.Normal(mu, sigma)
-        # probabilities = torch.distributions.Normal(mu, sigma)
 
         if reparameterize:
-            actions = probabilities.rsample()
+            action = probabilities.rsample()
         else:
-            actions = probabilities.sample()
+            action = probabilities.sample()
 
         if deterministic:
-            actions = mu
+            action = mu
 
-        # action = T.tanh(actions)*T.tensor(self.max_action).to(self.device)
-        # log_probs = probabilities.log_prob(actions)
-        # log_probs -= T.log(1-action.pow(2)+self.reparam_noise)
-        # log_probs = log_probs.sum(1, keepdim=True)
         # in spinning up it is:
-        log_probs = probabilities.log_prob(actions).sum(axis=-1)
-        log_probs -= (2*(np.log(2) - actions - F.softplus(-2*actions))).sum(axis=-1)
-        action = T.tanh(actions)*T.tensor(self.max_action).to(self.device)
+        log_probs = probabilities.log_prob(action).sum(axis=-1)
+        log_probs -= (2*(np.log(2) - action - F.softplus(-2*action))).sum(axis=-1)
+        tanh_action = T.tanh(action)*T.tensor(self.max_action).to(self.device)
 
-        return action, log_probs
+        if return_log_prob:
+            # this is from the pearl implementation
+            log_probs = probabilities.log_prob(action)
+            log_probs -= T.log(1 - tanh_action*tanh_action + self.reparam_noise)
+            log_probs = log_probs.sum(dim=1, keepdims=True)
+            return tanh_action, mu, T.log(sigma), log_probs, action
+        else:
+            return tanh_action, log_probs
 
 
 class ContextEncoder(nn.Module):
@@ -266,9 +267,11 @@ class PEARLPolicy(nn.Module):
     def __init__(self, alpha, latent_dim, policy_input_dims, encoder_in_size, max_action,
                  encoder_out_size, use_next_obs_in_context):
         super(PEARLPolicy, self).__init__()
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.latent_dim = latent_dim
-        self.policy = SACActorNetwork(alpha=alpha, input_dims=policy_input_dims, max_action=max_action)
-        self.context_encoder = ContextEncoder(alpha=alpha, input_size=encoder_in_size, out_size=encoder_out_size)
+        self.policy = SACActorNetwork(alpha=alpha, input_dims=policy_input_dims, max_action=max_action).to(self.device)
+        self.context_encoder = ContextEncoder(alpha=alpha, input_size=encoder_in_size,
+                                              out_size=encoder_out_size).to(self.device)
 
         self.register_buffer('z', torch.zeros(1, self.latent_dim))
         self.register_buffer('z_means', torch.zeros(1, self.latent_dim))
@@ -278,10 +281,12 @@ class PEARLPolicy(nn.Module):
         self.z_vars = None
         self.z = None
         self.context = None
-        # TODO pass this to init
+
         self.use_next_obs_in_context = use_next_obs_in_context
 
         self.clear_z()
+
+        self.to(self.device)
 
     def clear_z(self, num_tasks=1):
         # reset distribution over z to prior
@@ -304,7 +309,6 @@ class PEARLPolicy(nn.Module):
         r = torch.from_numpy(r)
         no = torch.from_numpy(no)
 
-        # TODO the environment does not return a 3 dimensional array so dim=2 will throw an error...
         # environment returns 1 d arrays
         # this concatenates the features along the feature dimension
         # o = [[[1, 2, 4],
@@ -318,7 +322,7 @@ class PEARLPolicy(nn.Module):
         #       [1, 2]],
         #      [[1, 2],
         #       [1, 2],
-    #          [1, 2]]]
+        #       [1, 2]]]
         # data = [[[1, 2, 4, 1, 2],
         #          [1, 2, 4, 1, 2],
         #          [1, 2, 4, 1, 2]],
@@ -351,17 +355,25 @@ class PEARLPolicy(nn.Module):
         ''' compute KL( q(z|c) || r(z) ) '''
         prior = torch.distributions.Normal(torch.zeros(self.latent_dim), torch.ones(self.latent_dim))
         posteriors = torch.distributions.normal.Normal(self.z_means, torch.sqrt(self.z_vars))
+        # this stuff is necessary else pytorch throws an error that the variable or not on same device
+        posteriors.loc = posteriors.loc.to(device=self.device)
+        posteriors.scale = posteriors.scale.to(device=self.device)
+        prior.loc = prior.loc.to(device=self.device)
+        prior.scale = prior.scale.to(device=self.device)
         kl_div = torch.distributions.kl.kl_divergence(posteriors, prior)
         kl_div_sum = torch.sum(kl_div)
         return kl_div_sum
 
     def infer_posterior(self, context):
         ''' compute q(z|c) as a function of input context and sample new z from it'''
-        params = self.context_encoder(context)
-        params = params.view(context.size(0), -1, self.context_encoder.output_size)
+        # it is important to set dtype=torch.float (means float32) because context is a numpy array with float64
+        # and the weight in the linear layer of context_encoder are float32.
+        c = context.to(device=self.device, dtype=torch.float)
+        params = self.context_encoder(c)
+        params = params.view(context.size(0), -1, self.context_encoder.out_size)
         # with probabilistic z, predict mean and variance of q(z | c)
-        mu = params[:, :self.latent_dim]
-        sigma_squared = F.softplus(params[:, self.latent_dim:])
+        mu = params[:, :, :self.latent_dim]
+        sigma_squared = F.softplus(params[:, :, self.latent_dim:])
         z_params = [self.product_of_gaussians(m, s) for m, s in zip(torch.unbind(mu), torch.unbind(sigma_squared))]
         self.z_means = torch.stack([p[0] for p in z_params])
         self.z_vars = torch.stack([p[1] for p in z_params])
@@ -375,30 +387,34 @@ class PEARLPolicy(nn.Module):
         mu = sigma_squared * torch.sum(mus / sigmas_squared, dim=0)
         return mu, sigma_squared
 
-    def get_action(self, obs, deterministic=False):
+    def get_action(self, observation, deterministic=False):
         ''' sample action from the policy, conditioned on the task embedding '''
-        z = self.z
-        obs = torch.from_numpy(obs)
+        # TODO in sac.py we set policy.eval() before sampling
+        z = self.z.to(self.device)
+        obs = torch.from_numpy(observation).type(torch.float).to(self.device)
+        obs = obs.view((-1, *obs.shape))  # enlargens by one dimension [*,*,*] -> [[*,*,*]]
         in_ = torch.cat([obs, z], dim=1)
-        # TODO the sample_normal function is different from what ref. impl. is doing
-        action, _ = self.policy.sample_normal(in_, deterministic=deterministic)
-        return action
+
+        with torch.no_grad():
+            action, _ = self.policy.sample_normal(in_, deterministic=deterministic)  # in_ (1,13)
+        return action.cpu().detach().numpy()[0]  # action is [[a1,a2]] so [0] is [a1,a2]
 
     def forward(self, obs, context):
         ''' given context, get statistics under the current policy of a set of observations '''
+        # context and obs are here already dtype float and on correct device
         self.infer_posterior(context)
         self.sample_z()
 
-        task_z = self.z
+        task_z = self.z.to(self.device)  # shape (meta_batch, latent_dim) meaning for each task one z
 
-        t, b, _ = obs.size()
+        t, b, _ = obs.size()  # meta_batch, batch_size, obs_dim=8
         obs = obs.view(t * b, -1)
         task_z = [z.repeat(b, 1) for z in task_z]
-        task_z = torch.cat(task_z, dim=0)
+        task_z = torch.cat(task_z, dim=0)  # now task_z has same first dim as obs, so meta_batch*batch_size, obs_dim
 
         # run policy, get log probs and new actions
-        in_ = torch.cat([obs, task_z.detach()], dim=1)
-        # TODO the policy does not output same things as in ref implementation
-        policy_outputs = self.policy(in_, reparameterize=True, return_log_prob=True)
+        in_ = torch.cat([obs, task_z.detach()], dim=1)  # meta_batch*batch_size, obs_dim+latent_dim
+
+        policy_outputs = self.policy.sample_normal(in_, reparameterize=True, return_log_prob=True)  # , return_log_prob=True)
 
         return policy_outputs, task_z

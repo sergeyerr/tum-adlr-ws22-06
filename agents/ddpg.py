@@ -19,13 +19,17 @@ class DDPGAgent(object):
 
         # Neural networks
         # Policy Network
-        self.pi = Networks.DDPGActor(alpha=self.pi_lr, input_dims=self.input_dims, n_actions=self.n_actions).to(self.device)
-        self.target_pi = Networks.DDPGActor(alpha=self.pi_lr, input_dims=self.input_dims, n_actions=self.n_actions).to(self.device)
+        self.pi = Networks.DDPGActor(alpha=self.pi_lr, input_dims=self.input_dims,
+                                     n_actions=self.n_actions).to(self.device)
+        self.target_pi = Networks.DDPGActor(alpha=self.pi_lr, input_dims=self.input_dims,
+                                            n_actions=self.n_actions).to(self.device)
         self.pi_optimizer = self.pi.optimizer
 
         # Evaluation Network
-        self.q = Networks.DDPGCritic(beta=self.q_lr, input_dims=self.input_dims, n_actions=self.n_actions).to(self.device)
-        self.target_q = Networks.DDPGCritic(beta=self.q_lr, input_dims=self.input_dims, n_actions=self.n_actions).to(self.device)
+        self.q = Networks.DDPGCritic(beta=self.q_lr, input_dims=self.input_dims,
+                                     n_actions=self.n_actions).to(self.device)
+        self.target_q = Networks.DDPGCritic(beta=self.q_lr, input_dims=self.input_dims,
+                                            n_actions=self.n_actions).to(self.device)
         self.q_optimizer = self.q.optimizer
 
         # Sync weights

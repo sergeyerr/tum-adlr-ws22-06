@@ -117,7 +117,7 @@ class PEARLExperiment(object):
                 self.task_idx = idx
                 env = self.train_tasks[idx]
                 env.reset()
-                self.agent.encoder_replay_buffer.task_buffers[idx].clear_buffer()
+                self.agent.encoder_replay_buffer.clear_buffer(idx)
 
                 # collect some trajectories with z ~ prior
                 if self.training_args["num_steps_prior"] > 0:
@@ -146,6 +146,7 @@ class PEARLExperiment(object):
 
             if episode % self.validation_args["eval_interval"] == 0:
                 # TODO ensure that evalute returns true when agent finishes environment
+                # TODO also make sure to render and safe the gifs
                 solved = self.evaluate(episode)
                 if solved:
                     # return true, that agent solved environment
@@ -187,7 +188,7 @@ class PEARLExperiment(object):
         print(train_online_returns)
 
         ### test tasks
-        test_final_returns, test_online_returns = self.eval_rollout(range(len(self.eval_tasks)), episode)
+        test_final_returns, test_online_returns = self.eval_rollout(range(len(self.eval_tasks)), episode, evalu=True)
         print('test online returns')
         print(test_online_returns)
 
