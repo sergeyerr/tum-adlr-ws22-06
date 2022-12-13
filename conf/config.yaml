@@ -3,6 +3,7 @@ defaults:
   - agent: sac2
   - optional training: ${agent}
   - optional validation: ${agent}
+  - optional sweep: ${agent}
 
 
 agent:
@@ -20,6 +21,7 @@ training:
   batch_size: 64
   min_replay_size: 1000
   replay_buffer_size: 1000000
+  random: True
   seed: 0
   noise: 'Ornstein' #'Zero','Gaussian', 'Ornstein'
   noise_param: 0.2
@@ -59,6 +61,12 @@ env:
   default_wind: False
   default_wind_power: 0
   default_turbulence_power: 1.5
+
+
+sweep:
+  activate: True
+  sweep_id: 'tum-adlr-ws22-06/adlr_sweeps/a19nonll'
+  #https://docs.wandb.ai/guides/sweeps/define-sweep-configuration
 
 
   

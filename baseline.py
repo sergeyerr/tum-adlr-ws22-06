@@ -45,17 +45,17 @@ def train(cfg : DictConfig):
         train_env_fabric = LunarEnvFixedFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters)
         test_env_fabric = LunarEnvFixedFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters,  render_mode= 'rgb_array')
     env = train_env_fabric.generate_env()
-
-    T.manual_seed(training_args.seed)
-    T.backends.cudnn.deterministic = True
-    T.backends.cudnn.benchmark = False
-    np.random.seed(training_args.seed)
-    random.seed(training_args.seed)
+    if not training_args.random:
+        T.manual_seed(training_args.seed)
+        T.backends.cudnn.deterministic = True
+        T.backends.cudnn.benchmark = False
+        np.random.seed(training_args.seed)
+        random.seed(training_args.seed)
     #env.seed(args.seed)
     
     # Weights and biases initialization
     wandb.init(project="ADLR randomized envs", entity="tum-adlr-ws22-06", config=OmegaConf.to_object(cfg))
-
+    
 
     # Experiment directory storage
     env_path = os.path.join("experiments", "LunarLanderContinuous-v2")
