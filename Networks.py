@@ -235,7 +235,7 @@ class ContextEncoder(nn.Module):
         self.fc1_dims = fc1_dims
         self.fc2_dims = fc2_dims
         self.fc3_dims = fc3_dims
-        self.input_size = input_size
+        self.input_size = input_size  # obs_dim+act_dim+latent_dim = 11
         self.out_size = out_size
         if isinstance(input_size, list):
             self.input_size = int(np.prod(input_size))
@@ -301,13 +301,16 @@ class PEARLPolicy(nn.Module):
         posteriors = torch.distributions.normal.Normal(self.z_means, torch.sqrt(self.z_vars))
         self.z = posteriors.rsample()
 
+    # TODO as expected this function is incorrect. The sizes dont make sense
     def update_context(self, inputs):
         ''' append single transition to the current context '''
         o, a, r, no, d, info = inputs
-        o = torch.from_numpy(o)
-        a = torch.from_numpy(a)
-        r = torch.from_numpy(r)
-        no = torch.from_numpy(no)
+
+        # These operations expand the dimensions of the arrays by two
+        o = torch.from_numpy(o[None, None, ...]).to(device=self.device, dtype=torch.float)
+        a = torch.from_numpy(a[None, None, ...]).to(device=self.device, dtype=torch.float)
+        r = torch.from_numpy(np.array([r])[None, None, ...]).to(device=self.device, dtype=torch.float)
+        no = torch.from_numpy(no[None, None, ...]).to(device=self.device, dtype=torch.float)
 
         # environment returns 1 d arrays
         # this concatenates the features along the feature dimension
@@ -350,6 +353,7 @@ class PEARLPolicy(nn.Module):
             self.context = data
         else:
             self.context = torch.cat([self.context, data], dim=1)
+
 
     def compute_kl_div(self):
         ''' compute KL( q(z|c) || r(z) ) '''

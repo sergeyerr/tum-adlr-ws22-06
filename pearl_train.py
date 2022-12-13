@@ -67,7 +67,7 @@ class PEARLExperiment(object):
         # env.seed(self.args.seed)
 
         # Weights and biases initialization
-        wandb.init(project="Model tests on the non-randomized env", entity="tum-adlr-ws22-06",
+        wandb.init(project="ADLR randomized envs with Meta RL", entity="tum-adlr-ws22-06",
                    config=self.cfg)
 
         # Experiment directory storage
@@ -96,6 +96,8 @@ class PEARLExperiment(object):
             print(
                 f"================= {f'Sending weights to W&B every {temp} batch'} =================")
 
+        # TODO check if I can incorporate noise stuff here to make it same as baseline
+
         reward_history = deque(maxlen=100)
 
         '''meta-training loop'''
@@ -110,6 +112,7 @@ class PEARLExperiment(object):
                 for idx, env in enumerate(self.train_tasks):
                     env.reset()
                     self.task_idx = idx
+                    # TODO why do this if we clear encoder replay buffer later
                     self.collect_data(self.training_args["num_initial_steps"], 1, np.inf)
             # Sample data from train tasks.
             for i in range(self.training_args["num_tasks_sample"]):
@@ -117,6 +120,7 @@ class PEARLExperiment(object):
                 self.task_idx = idx
                 env = self.train_tasks[idx]
                 env.reset()
+                # TODO understand why we delete the replay buffer here although we filled it in loop before
                 self.agent.encoder_replay_buffer.clear_buffer(idx)
 
                 # collect some trajectories with z ~ prior
@@ -149,10 +153,7 @@ class PEARLExperiment(object):
                 # TODO also make sure to render and safe the gifs
                 solved = self.evaluate(episode)
                 if solved:
-                    # return true, that agent solved environment
-                    return True
-        # agent did not solve environment
-        return False
+                    break
 
     def evaluate(self, episode):
 
@@ -236,6 +237,7 @@ class PEARLExperiment(object):
             num_trajectories += 1
 
             if num_trajectories >= self.training_args["num_exp_traj_eval"]:
+                context = self.agent.pi.context
                 self.agent.pi.infer_posterior(self.agent.pi.context)
 
         return paths

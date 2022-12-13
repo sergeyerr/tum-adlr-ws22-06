@@ -56,12 +56,6 @@ class Sampler(object):
             a = policy.get_action(o, deterministic=deterministic)
             next_o, r, d, env_info, _ = env.step(a)
 
-            # Convert samples to tensors
-            # next_o = torch.tensor(next_o, dtype=torch.float, device=self.device)
-            # a = torch.tensor(a, dtype=torch.float, device=self.device)
-            # r = torch.tensor(r, dtype=torch.float, device=self.device).view((-1, 1))
-            # d = torch.tensor(d, dtype=torch.float, device=self.device).view((-1, 1))
-
             # a [*,*], o = [*,*,*,*,*,*,*,*], r float, d bool, env_info bool
             # update the agent's current context
             if accum_context:
