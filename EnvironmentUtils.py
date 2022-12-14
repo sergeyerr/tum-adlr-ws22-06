@@ -35,7 +35,9 @@ class DetermenisticResetWrapper(gym.Wrapper):
         
         
     def reset(self, **kwargs):
-        return self.env.reset(**kwargs, seed=self.seed)
+        
+        #return self.env.reset(**kwargs, seed=self.seed)
+        return self.env.reset(seed=self.seed)
 
 
 class StateInjectorWrapper(gym.Wrapper):

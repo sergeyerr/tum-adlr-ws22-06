@@ -12,6 +12,7 @@ agent:
 
 training:
   pass_env_parameters: False
+  random: True
   episodes: 10000
   episode_length: 1000
   update_after: 1000
