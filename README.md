@@ -1,6 +1,9 @@
 # tum-adlr-ws22-06
 Advanced Deep Learning for Robotics project: sim2real problem in the context of flying vehicles
 
+# GIT LFS ALARM
+run `git lfs install` before working with the rep
+
 # How the configuration works
 `conf\config.yaml` contains all the shared paramenters. \
 `conf\agent\` contains agent-specific parameters. 
@@ -22,4 +25,6 @@ To configure parameters of the fixed env, edit the parameters with prefix `defau
 To turn on randomization, set `env.random_type='Uniform'`, and tune lower and upper bounds of the parameters with corresponding configs. \
 To pass the env state (gravity, enable_wind, wind_power, turbulence_power) to an agent, set `training.pass_env_parameters=True`. \
 They will be normalized, according to lower and upper bounds, and added to state (see `StateInjectorWrapper` from `EnvironmentRandomizer.py`)
+
+
  

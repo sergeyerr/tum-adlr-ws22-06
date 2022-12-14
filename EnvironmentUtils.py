@@ -4,7 +4,7 @@ import numpy as np
 from gymnasium.spaces import Box
 
 class ValidationHypercube:
-    def __init__(self, env_params, points_per_axis = 3):
+    def __init__(self, env_params, points_per_axis = 3, check_no_wind = True):
         '''
         env_params - config dict, with bounds for gravity, wind and turbulence;
         points_per_axis - number of points per dimenstion of the hypercube
@@ -15,6 +15,7 @@ class ValidationHypercube:
         self.wind_power_lower, self.wind_power_upper = env_params['wind_power_lower'], env_params['wind_power_upper']
         self.turbulence_power_lower, self.turbulence_power_upper = env_params['turbulence_power_lower'], env_params['turbulence_power_upper']
         self.points_per_axis = points_per_axis
+        self.check_no_wind = check_no_wind
         
     
     def get_points(self):
@@ -25,7 +26,9 @@ class ValidationHypercube:
         turbulence_linspace = np.linspace(self.turbulence_power_lower, self.turbulence_power_upper, self.points_per_axis)   
         no_wind_ponts = [(g, 0, 0, 0) for g in gravity_linspace]
         wind_points = [(g, 1, w, t) for g in gravity_linspace for w in wind_linspace for t in turbulence_linspace]
-        return no_wind_ponts + wind_points
+        if self.check_no_wind:
+            return no_wind_ponts + wind_points
+        return wind_points
 
 
 class DetermenisticResetWrapper(gym.Wrapper):
@@ -151,9 +154,9 @@ class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
     '''Fabric for generating environments with parameters from hypercube grid 
     '''
     def __init__(self, pass_env_params,
-            env_params, render_mode=None, points_per_axis = 3):
+            env_params, render_mode=None, points_per_axis = 3, check_without_wind = True):
         super().__init__(pass_env_params, env_params, render_mode)
-        self.test_parameters = ValidationHypercube(env_params=env_params, points_per_axis=points_per_axis).get_points()
+        self.test_parameters = ValidationHypercube(env_params=env_params, points_per_axis=points_per_axis, check_no_wind=check_without_wind).get_points()
         self.iter = 0
     
     
