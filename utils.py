@@ -165,3 +165,30 @@ def validate(agent, validation_args, experiment_path, episode, test_env_fabric):
             print(f"Environment solved after {episode} episodes")
             return True
     return False
+
+
+def get_agent_from_run_cfg(run_cfg):
+    agent_args = run_cfg['agent']
+    training_args = run_cfg['training']
+    env_args = run_cfg['env']
+    if agent_args['name'] == "ddpg":
+        algorithm = DDPGAgent
+    elif agent_args['name'] == "sac":
+        algorithm = SACAgent
+    elif agent_args['name'] == "sac2":
+        algorithm = SACAgent2
+    env = LunarEnvFixedFabric(env_params=env_args, pass_env_params=training_args['pass_env_parameters']).generate_env()
+    env_info = {"input_dims":env.observation_space.shape, "n_actions": env.action_space.shape[0], "max_action": env.action_space.high}
+    agent = algorithm(**agent_args, **training_args, **env_info)
+    return agent
+
+
+def load_best_model(agent, run):
+    model_artifacts = [ x for x in  run.logged_artifacts() if x.type == "model" ]
+    hist = run.history(keys=["Validation after episode", "Average evaluation reward"], pandas=False)
+    
+    ind = np.argmax([x["Average evaluation reward"] for x in hist])
+    best_model_path = model_artifacts[ind].download()
+    agent.load_agent(best_model_path)
+    print(f"Best model loaded from {best_model_path} with reward {hist[ind]['Average evaluation reward']}")
+    return agent
