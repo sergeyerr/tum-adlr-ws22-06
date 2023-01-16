@@ -106,7 +106,6 @@ class PEARLExperiment(object):
             print(
                 f"================= {f'Sending weights to W&B every {temp} batch'} =================")
 
-        # TODO check if I can incorporate noise stuff here to make it same as baseline
         noise = ZeroNoise(self.n_actions)
 
         print_run_info(self.train_tasks[0], self.agent, self.agent_args, self.training_args, self.env_args,
@@ -114,7 +113,7 @@ class PEARLExperiment(object):
 
         reward_history = deque(maxlen=100)
 
-        '''meta-training loop'''
+        # meta-training loop
         # at each iteration, we first collect data from tasks, perform meta-updates, then try to evaluate
         for episode in range(self.training_args["num_iterations"]):
             self.episode_reward = 0.0
@@ -152,127 +151,31 @@ class PEARLExperiment(object):
                                       1, self.training_args["update_post_train"], add_to_enc_buffer=False)
 
             # Sample train tasks and compute gradient updates on parameters.
+            print("Sample train tasks and compute gradient updates on parameters.")
             for train_step in range(self.training_args["num_train_steps_per_itr"]):
                 indices = np.random.choice(self.training_args["n_train_tasks"], self.training_args["meta_batch"])
                 loss = self.agent.optimize(indices)
                 # Loss information kept for monitoring purposes during training
                 actor_loss += loss['actor_loss']
                 critic_loss += loss['critic_loss']
+
                 wandb.log({"Training episode": episode, "Batch": episode * self.training_args["num_train_steps_per_itr"] + train_step,
                            "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
 
             # reward_history.append(self.episode_reward)
+            print(f"episode actor loss is: {loss['actor_loss']} \t episode critic loss is: {loss['critic_loss']}")
 
             if episode % self.validation_args["eval_interval"] == 0:
-                # TODO ensure that evalute returns true when agent finishes environment
-                # TODO also make sure to render and safe the gifs
-                # solved = self.evaluate(episode)
                 solved = validate(self.agent, self.validation_args, experiment_path, episode,
                                   self.test_env_fabric, pearl=True)
                 if solved:
                     break
-
-    def evaluate(self, episode):
-
-        indices = np.random.choice(range(self.training_args["n_train_tasks"]), self.validation_args["eval_eps"])
-        print(f"evaluating onf {len(indices)} training tasks")
-        train_returns = []
-        ### eval train tasks with posterior sampled from the training replay buffer
-        print("eval train tasks with posterior sampled from the training replay buffer")
-        for idx in indices:
-            self.task_idx = idx
-            env = self.train_tasks[self.task_idx]
-            env.reset()
-            paths = []
-            for _ in range(self.training_args["num_steps_per_eval"] // self.training_args["max_path_length"]): # this is 1
-                context = self.agent.encoder_replay_buffer.sample_random_batch(self.task_idx,
-                                                                               self.training_args["embedding_batch_size"],
-                                                                               sample_context=True,
-                                                                               use_next_obs_in_context=
-                                                                               self.agent_args["use_next_obs_in_context"]
-                                                                               )
-                self.agent.pi.infer_posterior(context)
-                path, _ = self.sampler.obtain_samples(self.task_idx,
-                                                      deterministic=self.training_args["eval_deterministic"],
-                                                      max_samples=self.training_args["max_path_length"],
-                                                      accum_context=False, max_trajs=1, resample=np.inf)
-                paths += path
-
-            mean_reward = np.mean([sum(path["r"]) for path in paths])
-            train_returns.append(mean_reward)
-        # if self.validation_args["log_actions"]:
-            #steps = range(len(path["o"]))
-            #actions_main = path["a"][:, 0]
-            #actions_left_right = path["a"][:, 1]
-            #wandb.log({"Validation after episode": episode,
-                       # "Gravity": env.gravity,
-                      # "Wind": env.enable_wind,
-                       #"Wind power": env.wind_power,
-                       #"Turbulence power": env.turbulence_power,
-                       # "Action plot":  wandb.plot.line_series(xs=steps, ys=[actions_main, actions_left_right],
-                                                              #  keys=["Main engine", "left/right engine"],
-                                                               # xname="step")})
-        train_returns = np.mean(train_returns)
-
-        ### eval train tasks with on-policy data to match eval of test tasks
-        print("eval train tasks with on-policy data to match eval of test tasks")
-        train_final_returns, train_online_returns = self.eval_rollout(indices, episode)
-        print('train online returns')
-        print(train_online_returns)
-
-        ### test tasks
-        print("test tasks")
-        test_final_returns, test_online_returns = self.eval_rollout(range(len(self.eval_tasks)), episode, evalu=True)
-        print('test online returns')
-        print(test_online_returns)
-
-    def eval_rollout(self, indices, episode, evalu=False):
-        final_returns = []
-        online_returns = []
-        for idx in indices:
-            all_rets = []
-            for r in range(self.training_args["num_evals"]):
-                paths = self.collect_paths(idx, evalu=evalu)
-                sum_reward = [sum(path["r"]) for path in paths]
-                all_rets.append(sum_reward)
-            final_returns.append(np.mean([a[-1] for a in all_rets]))
-            # record online returns for the first n trajectories
-            n = min([len(a) for a in all_rets])
-            all_rets = [a[:n] for a in all_rets]
-            all_rets = np.mean(np.stack(all_rets), axis=0)  # avg return per nth rollout
-            online_returns.append(all_rets)
-        n = min([len(t) for t in online_returns])
-        online_returns = [t[:n] for t in online_returns]
-        return final_returns, online_returns
 
     def create_train_tasks(self, env_fabric, num_tasks):
         envs = []
         for i in range(num_tasks):
             envs.append(env_fabric.generate_env())
         return envs
-
-    # does one roll out with deterministic policy
-    def collect_paths(self, idx, evalu=False):
-        self.task_idx = idx
-        env = self.eval_tasks[self.task_idx] if evalu else self.train_tasks[self.task_idx]
-        env.reset()
-        self.agent.pi.clear_z()
-        paths = []
-        num_trajectories = 0
-        num_transitions = 0
-        while num_transitions < self.training_args["num_steps_per_eval"]:
-            path, num = self.sampler.obtain_samples(deterministic=self.training_args["eval_deterministic"],
-                                                    max_samples=self.training_args["num_steps_per_eval"] - num_transitions,
-                                                    max_trajs=1, accum_context=True, task_idx=self.task_idx,
-                                                    evalu=evalu)
-            paths += path
-            num_transitions += num
-            num_trajectories += 1
-
-            if num_trajectories >= self.training_args["num_exp_traj_eval"]:
-                self.agent.pi.infer_posterior(self.agent.pi.context)
-
-        return paths
 
     # generates rollout
     def collect_data(self, num_samples, resample_z_rate, update_posterior_rate, add_to_enc_buffer=True):

@@ -1,5 +1,5 @@
-n_train_tasks: 10 # number of tasks for meta training 100
-n_eval_tasks: 3 # number of tasks for evaluating adoption 30
+n_train_tasks: 100 # number of tasks for meta training 100
+n_eval_tasks: 3 # number of tasks for evaluating adoption 30 NOT USING THIS INSTEAD VALIDATION IS ON GRID
 meta_batch: 6 # number of tasks to average the gradient across 64
 num_iterations: 100 # number of data sampling / training iterates
 num_train_steps_per_itr: 1000

@@ -117,7 +117,7 @@ def validate(agent, validation_args, experiment_path, episode, test_env_fabric, 
                 actions_left_right.append(action[1])
                 #rewards_steps.append(reward)
 
-            if pearl and evaluation_episode > validation_args["num_exp_traj_eval"]:
+            if pearl and step > validation_args["num_exp_traj_eval"]:
                 agent.pi.infer_posterior(agent.pi.context)
 
             # End episode if done
