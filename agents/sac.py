@@ -39,6 +39,7 @@ class SACAgent(object):
         self.batch_size = kwargs["batch_size"]
         self.scale = kwargs["reward_scale"]
 
+    # the **kwargs is needed to have the same function structure as in ddpg agent
     def action(self, observation, addNoise=False, **kwargs):
         obs = torch.from_numpy(observation).type(torch.float).to(self.device)
         obs = obs.view((-1, *obs.shape))

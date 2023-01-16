@@ -36,7 +36,7 @@ class SACAgent2(SACAgent):
 
         # Bellman update using current policy and new observation
         with torch.no_grad():
-            next_action, logprobs = self.pi.sample_normal(new_obs)
+            next_action, logprobs = self.pi.sample_normal(new_obs, reparameterize=True)
             q1_target = self.q_1_target(new_obs, next_action)
             q2_target = self.q_2_target(new_obs, next_action)
             q_target = torch.min(q1_target, q2_target)
@@ -50,7 +50,7 @@ class SACAgent2(SACAgent):
     
     def compute_loss_pi(self, obs):
         # update policy
-        action, logprobs = self.pi.sample_normal(obs)
+        action, logprobs = self.pi.sample_normal(obs, reparameterize=True)
         q1 = self.q_1(obs, action)
         q2 = self.q_2(obs, action)
         q = torch.min(q1, q2)

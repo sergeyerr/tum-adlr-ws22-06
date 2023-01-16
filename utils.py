@@ -73,6 +73,7 @@ def validate(agent, validation_args, experiment_path, episode, test_env_fabric, 
             video_path = os.path.join(experiment_path, "videos", str(episode))
             test_env = RecordVideo(test_env_fabric.generate_env(), video_path)
         else:
+            # TODO why do we generate new test env every episode? I though we create 9 test env from grid directly
             test_env = test_env_fabric.generate_env()
         gravity, enable_wind, wind_power, turbulence_power = test_env.gravity, test_env.enable_wind, test_env.wind_power, test_env.turbulence_power
 
@@ -87,23 +88,19 @@ def validate(agent, validation_args, experiment_path, episode, test_env_fabric, 
         rewards = 0
 
         if pearl:
-            agent.pi.clear_z()
+            agent.clear_z()
 
         for step in range(validation_episode_length):
 
             # Get deterministic action
             with T.no_grad():
-                if pearl:
-                    action = agent.pi.get_action(obs, deterministic=True)
-                else:
-                    action = agent.action(obs, addNoise=False)
-
+                action = agent.action(obs, addNoise=False)
 
             # Take step in environment
             new_obs, reward, done, _, _ = test_env.step(action)
 
             if pearl:
-                agent.pi.update_context([obs, action, reward, new_obs])
+                agent.update_context([obs, action, reward, new_obs])
 
             # Update obs
             obs = new_obs
@@ -118,14 +115,14 @@ def validate(agent, validation_args, experiment_path, episode, test_env_fabric, 
                 #rewards_steps.append(reward)
 
             if pearl and step > validation_args["num_exp_traj_eval"]:
-                agent.pi.infer_posterior(agent.pi.context)
+                agent.infer_posterior(agent.context)
 
             # End episode if done
             if done:
                 break
 
         if pearl:
-            agent.pi.sample_z()
+            agent.sample_z()
 
         stop_reward.append(rewards)
         # seems to save only the last plot

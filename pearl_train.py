@@ -49,19 +49,21 @@ class PEARLExperiment(object):
             self.test_env_fabric = LunarEnvRandomFabric(env_params=self.env_args, pass_env_params=self.training_args["pass_env_parameters"],
                                                    render_mode= 'rgb_array')
 
-        # creates list of env with different parametrizations
+        # creates list of env with different parameterizations
         self.train_tasks = self.create_train_tasks(self.train_env_fabric, self.training_args["n_train_tasks"])
         self.eval_tasks = self.create_train_tasks(self.test_env_fabric, self.validation_args["eval_eps"])
 
-        self.n_actions = int(np.prod(self.train_tasks[0].action_space.shape))\
+        self.n_actions = int(np.prod(self.train_tasks[0].action_space.shape)) \
             if type(self.train_tasks[0].action_space) == gym.spaces.box.Box else self.train_tasks[0].action_space.n
+
         env_info = {"obs_dim": int(np.prod(self.train_tasks[0].observation_space.shape)), "n_actions": self.n_actions,
                     "max_action": self.train_tasks[0].action_space.high}
+
         # this is critical so that the q and v functions have the right input size
         env_info["input_dims"] = env_info["obs_dim"] + self.agent_args["latent_size"]
         self.agent = PEARLAgent(**self.agent_args, **self.training_args, **env_info)
 
-        self.sampler = Sampler(self.train_tasks, self.eval_tasks, self.agent.pi, self.training_args["max_path_length"])
+        self.sampler = Sampler(self.train_tasks, self.eval_tasks, self.agent, self.training_args["max_path_length"])
         self.episode_reward = 0.0
         self.task_idx = 0
 
@@ -184,11 +186,11 @@ class PEARLExperiment(object):
         # collect complete trajectories until the number of collected transitions >= num_samples
 
         # start from the prior
-        self.agent.pi.clear_z()
+        self.agent.clear_z()
 
         num_transitions = 0
         while num_transitions < num_samples:
-            # paths is a list or dictionaries
+            # paths is a list of dictionaries
             # each dictionary is a path. The values for the keys are two-dimensional np arrays
             paths, n_samples = self.sampler.obtain_samples(task_idx=self.task_idx,
                                                            max_samples=num_samples - num_transitions,
@@ -205,7 +207,7 @@ class PEARLExperiment(object):
                                                                                sample_context=True,
                                                                                use_next_obs_in_context=
                                                                                self.agent_args["use_next_obs_in_context"])
-                self.agent.pi.infer_posterior(context)
+                self.agent.infer_posterior(context)
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def start(cfg: DictConfig):
