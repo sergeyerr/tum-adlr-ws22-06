@@ -44,14 +44,15 @@ class PEARLExperiment(object):
                                                       render_mode= 'rgb_array',
                                                       points_per_axis=self.validation_args["hypercube_points_per_axis"],
                                                       **self.env_args)
-            self.validation_args["eval_eps"] = self.test_env_fabric.number_of_test_points()
+            self.validation_args["n_eval_tasks"] = self.test_env_fabric.number_of_test_points()
+            print(f"number of evaluation tasks is: {self.validation_args['n_eval_tasks']}")
         else:
             self.test_env_fabric = LunarEnvRandomFabric(env_params=self.env_args, pass_env_params=self.training_args["pass_env_parameters"],
                                                    render_mode= 'rgb_array')
 
         # creates list of env with different parameterizations
         self.train_tasks = self.create_train_tasks(self.train_env_fabric, self.training_args["n_train_tasks"])
-        self.eval_tasks = self.create_train_tasks(self.test_env_fabric, self.validation_args["eval_eps"])
+        self.eval_tasks = self.create_train_tasks(self.test_env_fabric, self.validation_args["n_eval_tasks"])
 
         self.n_actions = int(np.prod(self.train_tasks[0].action_space.shape)) \
             if type(self.train_tasks[0].action_space) == gym.spaces.box.Box else self.train_tasks[0].action_space.n
@@ -128,7 +129,7 @@ class PEARLExperiment(object):
                     env.reset()
                     self.task_idx = idx
                     # TODO why do this if we clear encoder replay buffer later
-                    self.collect_data(self.training_args["num_initial_steps"], 1, np.inf)
+                    self.roll_out(self.training_args["num_initial_steps"], 1, np.inf)
             # Sample data from train tasks.
             print('Sample data from train tasks')
             for i in range(self.training_args["num_tasks_sample"]):
@@ -141,17 +142,18 @@ class PEARLExperiment(object):
 
                 # collect some trajectories with z ~ prior
                 if self.training_args["num_steps_prior"] > 0:
-                    self.collect_data(self.training_args["num_steps_prior"], 1, np.inf)
+                    self.roll_out(self.training_args["num_steps_prior"], 1, np.inf)
                 # collect some trajectories with z ~ posterior
                 if self.training_args["num_steps_posterior"] > 0:
-                    self.collect_data(self.training_args["num_steps_posterior"], 1,
+                    self.roll_out(self.training_args["num_steps_posterior"], 1,
                                       self.training_args["update_post_train"])
                 # even if encoder is trained only on samples from the prior,
                 # the policy needs to learn to handle z ~ posterior
                 if self.training_args["num_extra_rl_steps_posterior"] > 0:
-                    self.collect_data(self.training_args["num_extra_rl_steps_posterior"],
+                    self.roll_out(self.training_args["num_extra_rl_steps_posterior"],
                                       1, self.training_args["update_post_train"], add_to_enc_buffer=False)
 
+            reward_history.append(self.episode_reward)
             # Sample train tasks and compute gradient updates on parameters.
             print("Sample train tasks and compute gradient updates on parameters.")
             for train_step in range(self.training_args["num_train_steps_per_itr"]):
@@ -164,14 +166,26 @@ class PEARLExperiment(object):
                 wandb.log({"Training episode": episode, "Batch": episode * self.training_args["num_train_steps_per_itr"] + train_step,
                            "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
 
-            # reward_history.append(self.episode_reward)
             print(f"episode actor loss is: {loss['actor_loss']} \t episode critic loss is: {loss['critic_loss']}")
-
-            if episode % self.validation_args["eval_interval"] == 0:
+            print(f"Training episode: {episode} Episode reward: {self.episode_reward}"
+                  f" Average reward: {np.mean(reward_history)}")
+            wandb.log({"Training episode": episode, "Episode reward": self.episode_reward,
+                       "Average reward": np.mean(reward_history)})
+            # if episode % self.validation_args["eval_interval"] == 0:
+            print("starting evaluation")
+            solved_tasks = []
+            for task_id, eval_task in enumerate(self.eval_tasks):
                 solved = validate(self.agent, self.validation_args, experiment_path, episode,
-                                  self.test_env_fabric, pearl=True)
+                                  eval_task, task_id, pearl=True)
                 if solved:
+                    print(f"solved task {task_id}!!")
+                    solved_tasks.append(solved)
                     break
+            if len(solved_tasks) == len(self.eval_tasks):
+                print(f"solved all tasks!!")
+                break
+            print("evaluation over")
+
 
     def create_train_tasks(self, env_fabric, num_tasks):
         envs = []
@@ -179,7 +193,92 @@ class PEARLExperiment(object):
             envs.append(env_fabric.generate_env())
         return envs
 
-    # generates rollout
+    # one path length is between 80 - 200 steps. This means during data collection we only collect one trajectory
+    # per iteration. This seems way too few.
+    # TODO increase num_steps_prior, num_steps_posterior etc.
+
+    def roll_out(self, num_samples, resample_z_rate, update_posterior_rate, add_to_enc_buffer=True):
+        # start from the prior
+        self.agent.clear_z()
+        num_transitions = 0
+
+        while num_transitions < num_samples:
+            n_steps_total = 0
+            n_trajs = 0
+            paths = []
+            while n_steps_total < num_samples - num_transitions:
+
+                observations = []
+                actions = []
+                rewards = []
+                terminals = []
+                env = self.train_tasks[self.task_idx]
+                o, _ = env.reset()
+                next_o = None
+                path_length = 0
+
+                # inner most loop
+                # here we interact with the environment
+                while path_length < self.training_args["max_path_length"]:  # max path length=1000 >> num_samples=100
+                    a = self.agent.action(o, addNoise=True)
+                    next_o, r, d, _, _ = env.step(a)
+                    observations.append(o)
+                    rewards.append(r)
+                    terminals.append(d)
+                    actions.append(a)
+                    path_length += 1
+                    o = next_o
+                    self.episode_reward += r
+                    if d:
+                        break
+
+                actions = np.array(actions)
+                if len(actions.shape) == 1:
+                    actions = np.expand_dims(actions, 1)
+                observations = np.array(observations)
+                if len(observations.shape) == 1:
+                    observations = np.expand_dims(observations, 1)
+                    next_o = np.array([next_o])
+                next_observations = np.vstack(
+                    (
+                        observations[1:, :],
+                        np.expand_dims(next_o, 0)  # this expanditure might be a problem.
+                    )
+                )
+                path = dict(
+                    o=observations,  # np.array [[1,2,4,5],[1,2,4,5],[1,2,4,5],...]
+                    a=actions,
+                    r=np.array(rewards).reshape(-1, 1),  # [[1],[1.4],[34],...]
+                    o2=next_observations,
+                    d=np.array(terminals).reshape(-1, 1),  # [[false],[false],[true],...]
+                )
+
+                paths.append(path)
+                n_steps_total += len(observations)  # will probably break here after first roll out
+                n_trajs += 1
+
+                if n_trajs % resample_z_rate == 0:
+                    self.agent.sample_z()
+
+            num_transitions += n_steps_total  # will probably break here and never reach stuff below
+            self.agent.replay_buffer.add_paths(self.task_idx, paths)
+            if add_to_enc_buffer:
+                self.agent.encoder_replay_buffer.add_paths(self.task_idx, paths)
+            if update_posterior_rate != np.inf:
+                context = self.agent.encoder_replay_buffer.sample_random_batch(self.task_idx,
+                                                                               self.training_args[
+                                                                                   "embedding_batch_size"],
+                                                                               sample_context=True,
+                                                                               use_next_obs_in_context=
+                                                                               self.agent_args[
+                                                                                   "use_next_obs_in_context"])
+                self.agent.infer_posterior(context)
+
+
+
+
+
+    '''# generates rollout
     def collect_data(self, num_samples, resample_z_rate, update_posterior_rate, add_to_enc_buffer=True):
 
         # get trajectories from current env in batch mode with given policy
@@ -208,7 +307,7 @@ class PEARLExperiment(object):
                                                                                use_next_obs_in_context=
                                                                                self.agent_args["use_next_obs_in_context"])
                 self.agent.infer_posterior(context)
-
+'''
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def start(cfg: DictConfig):
     config_dict = OmegaConf.to_object(cfg)

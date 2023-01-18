@@ -13,7 +13,7 @@ num_steps_per_eval: 1000  # nuumber of transitions to eval on
 batch_size: 64 # number of transitions in the RL batch 1024
 embedding_batch_size: 64 # number of transitions in the context batch 1024
 embedding_mini_batch_size: 64 # number of context transitions to backprop through (should equal the arg above except in the recurrent encoder case) 1024
-max_path_length: 1000 # max path length for this environment
+max_path_length: 1000 #200 max path length for this environment
 reward_scale: 1.0 # scale rewards before constructing Bellman update, effectively controls weight on the entropy of the policy
 num_exp_traj_eval: 1 # how many exploration trajs to collect before beginning posterior sampling at test time
 update_post_train: 1 # how often to resample the context when collecting data during training (in trajectories)

@@ -21,6 +21,7 @@ from utils import print_run_info, validate
 
 device = T.device('cuda' if T.cuda.is_available() else 'cpu')
 
+
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def train(cfg : DictConfig):
     agent_args = cfg.agent
@@ -39,14 +40,17 @@ def train(cfg : DictConfig):
                                                       render_mode= 'rgb_array',
                                                       points_per_axis=validation_args.hypercube_points_per_axis,
                                                       **env_args)
-            validation_args.eval_eps = test_env_fabric.number_of_test_points()
+            validation_args.n_eval_tasks = test_env_fabric.number_of_test_points()
         else:
             test_env_fabric = LunarEnvRandomFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters,
                                                    render_mode= 'rgb_array')
     else:
         train_env_fabric = LunarEnvFixedFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters)
         test_env_fabric = LunarEnvFixedFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters,  render_mode= 'rgb_array')
+
     env = train_env_fabric.generate_env()
+
+    eval_tasks = create_train_tasks(test_env_fabric, validation_args.n_eval_tasks )
 
     T.manual_seed(training_args.seed)
     T.backends.cudnn.deterministic = True
@@ -168,11 +172,23 @@ def train(cfg : DictConfig):
         print(f"Gravity: {gravity} Wind: {enable_wind} Wind power: {wind_power} Turbulence power: {turbulence_power}")
         wandb.log({"Training episode": episode, "Episode reward": episode_reward, "Average reward": np.mean(reward_history), 
                    "Gravity": gravity, "Wind": enable_wind, "Wind power": wind_power, "Turbulence power": turbulence_power})
+        solved_tasks = []
         if episode % validation_args.eval_interval == 0:
-            solved = validate(agent, validation_args, experiment_path, episode, test_env_fabric)
-            if solved:
+            for task_id, eval_task in enumerate(eval_tasks):
+                solved = validate(agent, validation_args, experiment_path, episode, eval_task, task_id)
+                if solved:
+                    print(f"solved task {task_id}!!")
+                    solved_tasks.append(solved)
+                    break
+            if len(solved_tasks) == len(eval_tasks):
+                print(f"solved all tasks!!")
                 break
 
+def create_train_tasks(env_fabric, num_tasks):
+    envs = []
+    for t in range(num_tasks):
+        envs.append(env_fabric.generate_env())
+    return envs
 
 if __name__=='__main__':
     train()

@@ -44,38 +44,35 @@ def print_run_info(env, agent, agent_args, training_args, env_args, validation_a
 
     
     
-def validate(agent, validation_args, experiment_path, episode, test_env_fabric, pearl=False):
+def validate(agent, validation_args, experiment_path, episode, in_eval_task, task_id, pearl=False):
     '''
     doing all the validation stuff + logging
     returns, whether the env is solved
     '''
     stop_reward = []
+
+    gravity, enable_wind, wind_power, turbulence_power = in_eval_task.gravity, in_eval_task.enable_wind,\
+        in_eval_task.wind_power, in_eval_task.turbulence_power
+
     if pearl:
         evaluation_episodes = range(validation_args["eval_eps"])
         record_video_on_eval = validation_args["record_video_on_eval"]
         log_actions = validation_args["log_actions"]
         validation_episode_length = validation_args["validation_episode_length"]
         eval_stop_condition = validation_args["eval_stop_condition"]
+        validation_traj_num = validation_args["validation_traj_num"]
     else:
         evaluation_episodes = range(validation_args.eval_eps)
         record_video_on_eval = validation_args.record_video_on_eval
         log_actions = validation_args.log_actions
         validation_episode_length = validation_args.validation_episode_length
         eval_stop_condition = validation_args.eval_stop_condition
-
-    # TODO we need to do multiple evaluations per task!
+        validation_traj_num = validation_args.validation_traj_num
 
     for evaluation_episode in evaluation_episodes:
-        # TODO: specify occurencies of vids (hydra, conditional parameter)
-        # use experiment_path folder
-        if record_video_on_eval and evaluation_episode == 0:
-            # create tmp env with videos
-            video_path = os.path.join(experiment_path, "videos", str(episode))
-            test_env = RecordVideo(test_env_fabric.generate_env(), video_path)
-        else:
-            # TODO why do we generate new test env every episode? I though we create 9 test env from grid directly
-            test_env = test_env_fabric.generate_env()
-        gravity, enable_wind, wind_power, turbulence_power = test_env.gravity, test_env.enable_wind, test_env.wind_power, test_env.turbulence_power
+
+        num_traj = 0
+        rewards = 0
 
         # log step-action-reward plot for each validation episode
         if log_actions:
@@ -84,47 +81,59 @@ def validate(agent, validation_args, experiment_path, episode, test_env_fabric, 
             actions_main = []
             actions_left_right = []
             #rewards_steps = []
-        obs, info = test_env.reset()
-        rewards = 0
 
+        # each episode clear the memory
         if pearl:
             agent.clear_z()
 
-        for step in range(validation_episode_length):
+        for traj in range(validation_traj_num):
+            # use experiment_path folder
+            if record_video_on_eval and evaluation_episode == 0 and traj == 0:
+                # create tmp env with videos
+                video_path = os.path.join(experiment_path, "videos", str(episode), str(task_id))
+                eval_task = RecordVideo(in_eval_task, video_path)
+            else:
+                eval_task = in_eval_task
 
-            # Get deterministic action
-            with T.no_grad():
-                action = agent.action(obs, addNoise=False)
+            obs, info = eval_task.reset()
 
-            # Take step in environment
-            new_obs, reward, done, _, _ = test_env.step(action)
+            for step in range(validation_episode_length):
 
-            if pearl:
-                agent.update_context([obs, action, reward, new_obs])
+                # Get deterministic action
+                with T.no_grad():
+                    action = agent.action(obs, addNoise=False)
 
-            # Update obs
-            obs = new_obs
+                # Take step in environment
+                new_obs, reward, done, _, _ = eval_task.step(action)
 
-            # Update rewards
-            rewards += reward
+                if pearl:
+                    agent.update_context([obs, action, reward, new_obs])
 
-            if log_actions:
-                steps.append(step)
-                actions_main.append(action[0])
-                actions_left_right.append(action[1])
-                #rewards_steps.append(reward)
+                # Update obs
+                obs = new_obs
 
-            if pearl and step > validation_args["num_exp_traj_eval"]:
+                # Update rewards
+                rewards += reward
+
+                if log_actions:
+                    steps.append(step)
+                    actions_main.append(action[0])
+                    actions_left_right.append(action[1])
+                    #rewards_steps.append(reward)
+
+                # End episode if done
+                if done:
+                    break
+
+            # each entry in stop_reward is the total reward per trajectory
+            # want to finish the evaluation once the average stop_reward over all trajectories is above threshold
+            stop_reward.append(rewards)
+
+            num_traj += 1
+            if pearl and num_traj > validation_args["num_exp_traj_eval"]:
                 agent.infer_posterior(agent.context)
 
-            # End episode if done
-            if done:
-                break
 
-        if pearl:
-            agent.sample_z()
-
-        stop_reward.append(rewards)
         # seems to save only the last plot
         if log_actions and evaluation_episode == 0:
             wandb.log({"Validation after episode": episode,
@@ -141,7 +150,9 @@ def validate(agent, validation_args, experiment_path, episode, test_env_fabric, 
                        "Wind power" : wind_power,
                        "Turbulence power" : turbulence_power,
                         "Video" : wandb.Video(os.path.join(video_path, "rl-video-episode-0.mp4"), fps=4, format="gif")})
-    
+            with open(f"{video_path}/env_params.txt", "w") as f:
+                f.write(f"gravity: {gravity}\n enable_wind: {enable_wind}\n, wind_power: {wind_power}\n, turbulence_power: {turbulence_power}\n")
+
     avg_reward = round(sum(stop_reward) / len(stop_reward), 3)
     min_reward = round(min(stop_reward), 3)
     
@@ -170,7 +181,7 @@ def validate(agent, validation_args, experiment_path, episode, test_env_fabric, 
     with open(f"{experiment_path}/evaluation_rewards.csv", "a") as f:
         f.write(f"{episode}, {stop_reward}\n")
     try:
-        if stop_reward > test_env.spec.reward_threshold * 1.1:  # x 1.1 because of small eval_episodes
+        if stop_reward > eval_task.spec.reward_threshold * 1.1:  # x 1.1 because of small eval_episodes
             print(f"Environment solved after {episode} episodes")
             return True
     except Exception as e:

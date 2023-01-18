@@ -23,9 +23,9 @@ class ValidationHypercube:
         gravity_linspace = np.linspace(self.gravity_lower, self.gravity_upper, self.points_per_axis) 
         wind_linspace= np.linspace(self.wind_power_lower, self.wind_power_upper, self.points_per_axis)
         turbulence_linspace = np.linspace(self.turbulence_power_lower, self.turbulence_power_upper, self.points_per_axis)   
-        no_wind_ponts = [(g, 0, 0, 0) for g in gravity_linspace]
+        no_wind_points = [(g, 0, 0, 0) for g in gravity_linspace]
         wind_points = [(g, 1, w, t) for g in gravity_linspace for w in wind_linspace for t in turbulence_linspace]
-        return no_wind_ponts + wind_points
+        return no_wind_points + wind_points
 
 
 class DetermenisticResetWrapper(gym.Wrapper):
@@ -146,7 +146,7 @@ class LunarEnvRandomFabric(LunarEnvFixedFabric):
 class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
     '''Fabric for generating environments with parameters from hypercube grid 
     '''
-    def __init__(self, pass_env_params, render_mode=None, points_per_axis=3, ** env_params):
+    def __init__(self, pass_env_params, render_mode=None, points_per_axis=3, **env_params):
         super().__init__(pass_env_params, render_mode, **env_params)
         self.test_parameters = ValidationHypercube(points_per_axis=points_per_axis, **env_params).get_points()
         self.iter = 0

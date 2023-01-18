@@ -182,7 +182,6 @@ class PEARLAgent(SACAgent):
 
     def action(self, observation, addNoise=False, **kwargs):
         # sample action from the policy, conditioned on the task embedding
-
         z = self.z.to(self.device)
         obs = torch.from_numpy(observation).type(torch.float).to(self.device)
         obs = obs.view((-1, *obs.shape))  # enlargens by one dimension [*,*,*] -> [[*,*,*]]
