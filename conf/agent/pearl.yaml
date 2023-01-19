@@ -1,11 +1,11 @@
 name: "pearl"
-tau: 1E-2 # for SAC target network update
-pi_lr: 1E-3
-q_lr: 1E-3
-vf_lr: 1E-3 # is not used, instead value network uses same lr as q network
-context_lr: 1E-3
+tau: 0.005 # for SAC target network update
+pi_lr: 3E-4
+q_lr: 3E-4
+vf_lr: 3E-4 # is not used, instead value network uses same lr as q network
+context_lr: 3E-4
 gamma: 0.99 # RL discount factor
-kl_lambda: 1.0 # weight on KL divergence term in encoder loss
+kl_lambda: 0.1 # weight on KL divergence term in encoder loss
 policy_mean_reg_weight: 1E-3
 policy_std_reg_weight: 1E-3
 policy_pre_activation_weight: 0

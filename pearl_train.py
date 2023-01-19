@@ -171,20 +171,20 @@ class PEARLExperiment(object):
                   f" Average reward: {np.mean(reward_history)}")
             wandb.log({"Training episode": episode, "Episode reward": self.episode_reward,
                        "Average reward": np.mean(reward_history)})
-            # if episode % self.validation_args["eval_interval"] == 0:
-            print("starting evaluation")
-            solved_tasks = []
-            for task_id, eval_task in enumerate(self.eval_tasks):
-                solved = validate(self.agent, self.validation_args, experiment_path, episode,
-                                  eval_task, task_id, pearl=True)
-                if solved:
-                    print(f"solved task {task_id}!!")
-                    solved_tasks.append(solved)
+            if episode % self.validation_args["eval_interval"] == 0:
+                print("starting evaluation")
+                solved_tasks = []
+                for task_id, eval_task in enumerate(self.eval_tasks):
+                    solved = validate(self.agent, self.validation_args, experiment_path, episode,
+                                      eval_task, task_id, pearl=True)
+                    if solved:
+                        print(f"solved task {task_id}!!")
+                        solved_tasks.append(solved)
+                        break
+                if len(solved_tasks) == len(self.eval_tasks):
+                    print(f"solved all tasks!!")
                     break
-            if len(solved_tasks) == len(self.eval_tasks):
-                print(f"solved all tasks!!")
-                break
-            print("evaluation over")
+                print("evaluation over")
 
 
     def create_train_tasks(self, env_fabric, num_tasks):

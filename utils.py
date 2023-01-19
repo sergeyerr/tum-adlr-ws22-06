@@ -92,6 +92,9 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
                 # create tmp env with videos
                 video_path = os.path.join(experiment_path, "videos", str(episode), str(task_id))
                 eval_task = RecordVideo(in_eval_task, video_path)
+                with open(f"{video_path}/env_params.txt", "w") as f:
+                    f.write(
+                        f"gravity: {gravity}\n enable_wind: {enable_wind}\n, wind_power: {wind_power}\n, turbulence_power: {turbulence_power}\n")
             else:
                 eval_task = in_eval_task
 
@@ -137,21 +140,20 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
         # seems to save only the last plot
         if log_actions and evaluation_episode == 0:
             wandb.log({"Validation after episode": episode,
-                        "Gravity" : gravity,
-                       "Wind" : enable_wind,
-                       "Wind power" : wind_power,
-                       "Turbulence power" : turbulence_power,
-                        "Action plot" :  wandb.plot.line_series(xs=steps, ys=[actions_main, actions_left_right], keys=["Main engine", "left/right engine"], xname="step")})
+                       "Gravity": gravity,
+                       "Wind": enable_wind,
+                       "Wind power": wind_power,
+                       "Turbulence power": turbulence_power,
+                       "Action plot":  wandb.plot.line_series(xs=steps, ys=[actions_main, actions_left_right], keys=["Main engine", "left/right engine"], xname="step")})
 
         if record_video_on_eval and evaluation_episode == 0:
             wandb.log({"Validation after episode": episode,
-                        "Gravity" : gravity,
-                       "Wind" : enable_wind,
-                       "Wind power" : wind_power,
-                       "Turbulence power" : turbulence_power,
-                        "Video" : wandb.Video(os.path.join(video_path, "rl-video-episode-0.mp4"), fps=4, format="gif")})
-            with open(f"{video_path}/env_params.txt", "w") as f:
-                f.write(f"gravity: {gravity}\n enable_wind: {enable_wind}\n, wind_power: {wind_power}\n, turbulence_power: {turbulence_power}\n")
+                       "Gravity": gravity,
+                       "Wind": enable_wind,
+                       "Wind power": wind_power,
+                       "Turbulence power": turbulence_power,
+                        "Video": wandb.Video(os.path.join(video_path, "rl-video-episode-0.mp4"), fps=4, format="gif")})
+
 
     avg_reward = round(sum(stop_reward) / len(stop_reward), 3)
     min_reward = round(min(stop_reward), 3)
