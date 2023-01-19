@@ -168,7 +168,8 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
                        "Wind": enable_wind,
                        "Wind power": wind_power,
                        "Turbulence power": turbulence_power,
-                        "Video": wandb.Video(os.path.join(video_path, "rl-video-episode-0.mp4"), fps=4, format="gif")})
+                        "Video": wandb.Video(os.path.join(video_path, "rl-video-episode-0.mp4"), fps=4, format="gif",
+                                             caption=f"gravity: {gravity}, wind: {enable_wind}, wind power: {wind_power}, turbulence power: {turbulence_power}, episode: {episode}")})
 
 
     avg_reward = round(sum(stop_reward) / len(stop_reward), 3)

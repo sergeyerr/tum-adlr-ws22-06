@@ -21,6 +21,7 @@ from DataHandling.ReplayBuffer import MultiTaskReplayBuffer
 import torch
 import torch.nn.functional as F
 import numpy as np
+import os
 
 
 class PEARLAgent(SACAgent):
@@ -310,3 +311,14 @@ class PEARLAgent(SACAgent):
         self.pi.optimizer.step()
 
         return loss_results
+
+
+    def save_agent(self, save_path):
+        super().save_agent(save_path)
+        context_encoder_path = os.path.join(save_path, "context_encoder.pt")
+        torch.save(self.context_encoder.state_dict(), context_encoder_path)
+        
+    def load_agent(self, load_path):
+        super().load_agent(load_path)
+        context_encoder_path = os.path.join(load_path, "context_encoder.pt")
+        self.context_encoder.load_state_dict(torch.load(context_encoder_path))
