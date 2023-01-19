@@ -3,6 +3,7 @@ defaults:
   - agent: pearl
   - optional training: ${agent}
   - optional validation: ${agent}
+  - optional sweep: ${agent}
 
 
 agent:
@@ -11,6 +12,7 @@ agent:
 
 training:
   pass_env_parameters: False
+  random: True
   episodes: 10000
   episode_length: 1000
   update_after: 1000
@@ -34,9 +36,10 @@ validation:
   # eval_eps will be calculated automatically in case of hypercube validation
   eval_eps: 2 #50
   n_eval_tasks: 5 #in case of hypecube validation this will be overwritten by hypercube_points_per_axis
+
   
   eval_stop_condition: 'min' # 'min', 'avg': how results from eval_eps are aggregated
-  eval_interval: 5
+  eval_interval: 50
   record_video_on_eval: True
   validation_episode_length: 1000
   validation_traj_num: 10
@@ -64,6 +67,9 @@ env:
   default_wind_power: 0
   default_turbulence_power: 1.5
 
+
+sweep:
+  activate: False
 
   
   

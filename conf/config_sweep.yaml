@@ -1,0 +1,75 @@
+defaults:
+  - _self_
+  - agent: sac2
+  - optional training: ${agent}
+  - optional validation: ${agent}
+  - optional sweep: ${agent}
+
+
+agent:
+# modify the name!
+  experiment_name: "${agent.name}_default_env"
+
+training:
+  pass_env_parameters: False
+  episodes: 501
+  episode_length: 1000
+  update_after: 1000
+  start_steps: 1000
+  update_every: 1
+  train_batches: 1
+  batch_size: 64
+  min_replay_size: 1000
+  replay_buffer_size: 1000000
+  random: True
+  seed: 0
+  noise: 'Ornstein' #'Zero','Gaussian', 'Ornstein'
+  noise_param: 0.2
+
+validation:
+  log_model_wandb: True
+  log_model_every_training_batch: 1000
+
+  # hypercube validation is not possible (it makes no sense), if env is NOT random 
+  hypercube_validation: True
+  hypercube_points_per_axis: 3 
+  # eval_eps will be calculated automatically in case of hypercube validation
+  eval_eps: 5
+  
+  eval_stop_condition: 'min' # 'min', 'avg': how results from eval_eps are aggregated
+  eval_interval: 50
+  record_video_on_eval: False
+  validation_episode_length: 1000
+  log_actions: True
+
+env:
+  determenistic_reset: True
+  seed: 0
+  random: True
+  random_type: 'Uniform' # 'Uniform', 'Gaussian'
+  # if you set any of bounds precisely, there will be the error in validation
+  gravity_lower: -11.999 # from -12 to 0
+  gravity_upper: -0.0001 # from -12 to 0
+  wind_probability: 0.5
+  wind_power_lower: 0 # from 0 to 20
+  wind_power_upper: 10 # from 0 to 20
+  turbulence_power_lower: 0 # from 0 to 2
+  turbulence_power_upper: 1  # from 0 to 2
+
+  # If randomize type == Fixed, then these parameters will be used always
+  default_gravity: -10
+  default_wind: False
+  default_wind_power: 0
+  default_turbulence_power: 1.5
+
+
+sweep:
+  activate: True
+  sweep_id: 'tum-adlr-ws22-06/adlr_sweeps/0siofi3i'
+  count: 10
+  #https://docs.wandb.ai/guides/sweeps/define-sweep-configuration
+
+
+  
+  
+
