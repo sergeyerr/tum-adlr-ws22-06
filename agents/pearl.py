@@ -238,13 +238,15 @@ class PEARLAgent(SACAgent):
         in_ = torch.cat([obs, task_z.detach()], dim=1)  # meta_batch*batch_size, obs_dim+latent_dim
 
         policy_outputs = self.pi.sample_normal(in_, reparameterize=True, return_log_prob=True)
-        # policy_outputs, task_z = self.forward(obs, context)
 
         new_actions, policy_mean, policy_log_std, log_pi = policy_outputs[:4]
         # tanh_action, mean, T.log(sigma), log_probs, None, sigma, None, action
 
         # Q and V networks
         # encoder will only get gradients from Q nets
+        # TODO check if concatentation in dim=1 is correct. Also check the SACCriticNetwork
+        #  (in reference the cat with dim 1)
+        # TODO also check if order ob inputs matter. In reference implementation they have o, a, z
         q1_pred = self.q_1(torch.cat([obs, task_z], dim=1), actions)
         q2_pred = self.q_2(torch.cat([obs, task_z], dim=1), actions)
         v_pred = self.value(torch.cat([obs, task_z.detach()], dim=1))
@@ -260,22 +262,23 @@ class PEARLAgent(SACAgent):
 
         # qf and encoder update (note encoder does not get grads from policy or vf)
         self.q_1.optimizer.zero_grad()
-        self.q_1.optimizer.zero_grad()
+        self.q_2.optimizer.zero_grad()
         rewards_flat = rewards.view(self.batch_size * num_tasks, -1)
         # scale rewards for Bellman update
+        # TODO check self.scale parameter
         rewards_flat = rewards_flat * self.scale
         terms_flat = terms.view(self.batch_size * num_tasks, -1)
         q_target = rewards_flat + (1. - terms_flat) * self.gamma * target_v_values
-        qf_loss = torch.mean((q1_pred - q_target) ** 2) + torch.mean((q2_pred - q_target) ** 2)
-        loss_results["critic_loss"] = qf_loss
-        qf_loss.backward()
+        q_loss = torch.mean((q1_pred - q_target) ** 2) + torch.mean((q2_pred - q_target) ** 2)
+        loss_results["critic_loss"] = q_loss.data
+        q_loss.backward()
         self.q_1.optimizer.step()
         self.q_2.optimizer.step()
         self.context_encoder.optimizer.step()
 
         # compute min Q on the new actions
-        q1 = self.q_1(torch.cat([obs, new_actions], dim=1), task_z.detach())
-        q2 = self.q_2(torch.cat([obs, new_actions], dim=1), task_z.detach())
+        q1 = self.q_1(torch.cat([obs, task_z.detach()], dim=1), new_actions)
+        q2 = self.q_2(torch.cat([obs, task_z.detach()], dim=1), new_actions)
         min_q_new_actions = torch.min(q1, q2)
 
         # vf update
@@ -289,7 +292,6 @@ class PEARLAgent(SACAgent):
         # policy update
         # n.b. policy update includes dQ/da
         policy_loss = (log_pi - min_q_new_actions).mean()
-        loss_results["actor_loss"] = policy_loss.data
 
         # dont know what all that regularization is
         mean_reg_loss = self.policy_mean_reg_weight * (policy_mean ** 2).mean()
@@ -300,6 +302,8 @@ class PEARLAgent(SACAgent):
         )
         policy_reg_loss = mean_reg_loss + std_reg_loss + pre_activation_reg_loss
         policy_loss = policy_loss + policy_reg_loss
+
+        loss_results["actor_loss"] = policy_loss.data
 
         self.pi.optimizer.zero_grad()
         policy_loss.backward()
