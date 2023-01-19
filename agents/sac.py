@@ -1,5 +1,4 @@
-import Networks
-from .ReplayBuffer import ReplayBuffer
+from DataHandling.ReplayBuffer import ReplayBuffer
 import Networks
 import torch
 import os
@@ -21,16 +20,17 @@ class SACAgent(object):
         # Policy Network
         self.pi = Networks.SACActorNetwork(alpha=self.pi_lr, input_dims=self.input_dims, n_actions=self.n_actions,
                                            max_action=self.max_action).to(self.device)
-        self.q_1 = Networks.SACCriticNetwork(beta=self.q_lr, input_dims=self.input_dims, n_actions=self.n_actions)
-        self.q_2 = Networks.SACCriticNetwork(beta=self.q_lr, input_dims=self.input_dims, n_actions=self.n_actions)
-        self.value = Networks.SACValueNetwork(beta=self.q_lr, input_dims=self.input_dims)
-        self.target_value = Networks.SACValueNetwork(beta=self.q_lr, input_dims=self.input_dims)
+        self.q_1 = Networks.SACCriticNetwork(beta=self.q_lr, input_dims=self.input_dims,
+                                             n_actions=self.n_actions).to(self.device)
+        self.q_2 = Networks.SACCriticNetwork(beta=self.q_lr, input_dims=self.input_dims,
+                                             n_actions=self.n_actions).to(self.device)
+        self.value = Networks.SACValueNetwork(beta=self.q_lr, input_dims=self.input_dims).to(self.device)
+        self.target_value = Networks.SACValueNetwork(beta=self.q_lr, input_dims=self.input_dims).to(self.device)
 
         # Sync weights
         self.sync_weights()
 
         # Replay buffer
-        self.min_replay_size = kwargs["min_replay_size"]
         self.replay_buffer = ReplayBuffer(kwargs["replay_buffer_size"])
 
         # Constants
@@ -39,6 +39,7 @@ class SACAgent(object):
         self.batch_size = kwargs["batch_size"]
         self.scale = kwargs["reward_scale"]
 
+    # the **kwargs is needed to have the same function structure as in ddpg agent
     def action(self, observation, addNoise=False, **kwargs):
         obs = torch.from_numpy(observation).type(torch.float).to(self.device)
         obs = obs.view((-1, *obs.shape))
@@ -122,7 +123,7 @@ class SACAgent(object):
     def experience(self, o, a, r, o2, d):
         self.replay_buffer.record(o, a, r, o2, d)
 
-    def update(self):
+    def update_target_network(self):
         with torch.no_grad():
             for value_param, target_value_param in zip(self.value.parameters(), self.target_value.parameters()):
                 target_value_param.data = (1.0 - self.tau) * target_value_param.data + self.tau * value_param.data

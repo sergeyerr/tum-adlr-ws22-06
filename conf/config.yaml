@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - agent: sac2
+  - agent: pearl
   - optional training: ${agent}
   - optional validation: ${agent}
   - optional sweep: ${agent}
@@ -34,22 +34,27 @@ validation:
   hypercube_validation: True
   hypercube_points_per_axis: 3 
   # eval_eps will be calculated automatically in case of hypercube validation
-  eval_eps: 5
+  eval_eps: 2 #50
+  n_eval_tasks: 5 #in case of hypecube validation this will be overwritten by hypercube_points_per_axis
+
   
   eval_stop_condition: 'min' # 'min', 'avg': how results from eval_eps are aggregated
   eval_interval: 50
   record_video_on_eval: True
   validation_episode_length: 1000
+  validation_traj_num: 10
   log_actions: True
 
+  num_exp_traj_eval: 1
+
 env:
-  determenistic_reset: True
   seed: 0
+  deterministic_reset: True
   random: True
   random_type: 'Uniform' # 'Uniform', 'Gaussian'
   # if you set any of bounds precisely, there will be the error in validation
-  gravity_lower: -11.999 # from -12 to 0
-  gravity_upper: -0.0001 # from -12 to 0
+  gravity_lower: -8.0 # -11.999 from -12 to 0
+  gravity_upper: -4.0 # -0.0001 from -12 to 0
   wind_probability: 0.5
   wind_power_lower: 0 # from 0 to 20
   wind_power_upper: 10 # from 0 to 20

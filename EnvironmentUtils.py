@@ -4,7 +4,7 @@ import numpy as np
 from gymnasium.spaces import Box
 
 class ValidationHypercube:
-    def __init__(self, env_params, points_per_axis = 3, check_no_wind = True):
+    def __init__(self, points_per_axis = 3, check_no_wind = True,  **env_params):
         '''
         env_params - config dict, with bounds for gravity, wind and turbulence;
         points_per_axis - number of points per dimenstion of the hypercube
@@ -24,7 +24,7 @@ class ValidationHypercube:
         gravity_linspace = np.linspace(self.gravity_lower, self.gravity_upper, self.points_per_axis) 
         wind_linspace= np.linspace(self.wind_power_lower, self.wind_power_upper, self.points_per_axis)
         turbulence_linspace = np.linspace(self.turbulence_power_lower, self.turbulence_power_upper, self.points_per_axis)   
-        no_wind_ponts = [(g, 0, 0, 0) for g in gravity_linspace]
+        no_wind_points = [(g, 0, 0, 0) for g in gravity_linspace]
         wind_points = [(g, 1, w, t) for g in gravity_linspace for w in wind_linspace for t in turbulence_linspace]
         if self.check_no_wind:
             return no_wind_ponts + wind_points
@@ -86,9 +86,8 @@ class StateInjectorWrapper(gym.Wrapper):
     
 class LunarEnvFixedFabric:
     '''Parent class for all fabrics'''
-    def __init__(self, pass_env_params,
-                env_params, render_mode=None):
-        self.random_type =  env_params['random_type']
+    def __init__(self, pass_env_params, render_mode=None, **env_params):
+        self.random_type = env_params['random_type']
         self.pass_env_params = pass_env_params
         if self.random_type != 'Uniform' and self.random_type != 'Fixed':
             raise NotImplementedError("Only uniform randomization is supported")
@@ -104,7 +103,7 @@ class LunarEnvFixedFabric:
         self.default_wind_power = env_params['default_wind_power']
         self.default_turbulence_power = env_params['default_turbulence_power']
         self.render_mode_pass = render_mode
-        self.determenistic_reset = env_params['determenistic_reset']
+        self.deterministic_reset = env_params['deterministic_reset']
         self.seed = env_params['seed'] if 'seed' in env_params else 42
         
     def generate_env(self):
@@ -113,16 +112,15 @@ class LunarEnvFixedFabric:
                                   enable_wind=self.default_wind, wind_power=self.default_wind_power, turbulence_power=self.default_turbulence_power), self.pass_env_params, 
                                     self.gravity_lower, self.gravity_upper, self.wind_power_lower,
                                     self.wind_power_upper, self.turbulence_power_lower, self.turbulence_power_upper)
-        if self.determenistic_reset:
+        if self.deterministic_reset:
             return DetermenisticResetWrapper(env, self.seed)
         else:
             return env
 
 
 class LunarEnvRandomFabric(LunarEnvFixedFabric):
-    def __init__(self, pass_env_params,
-                env_params, render_mode=None):
-        super().__init__(pass_env_params, env_params, render_mode)
+    def __init__(self, pass_env_params, render_mode=None, **env_params):
+        super().__init__(pass_env_params, render_mode, **env_params)
         
     def generate_env(self):
         if self.random_type == "Uniform":
@@ -136,7 +134,7 @@ class LunarEnvRandomFabric(LunarEnvFixedFabric):
                             self.gravity_lower, self.gravity_upper, self.wind_power_lower,
                             self.wind_power_upper, self.turbulence_power_lower, self.turbulence_power_upper)
         
-        if self.determenistic_reset:
+        if self.deterministic_reset:
             return DetermenisticResetWrapper(env, self.seed)
         else:
             return env
@@ -153,10 +151,9 @@ class LunarEnvRandomFabric(LunarEnvFixedFabric):
 class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
     '''Fabric for generating environments with parameters from hypercube grid 
     '''
-    def __init__(self, pass_env_params,
-            env_params, render_mode=None, points_per_axis = 3, check_without_wind = True):
-        super().__init__(pass_env_params, env_params, render_mode)
-        self.test_parameters = ValidationHypercube(env_params=env_params, points_per_axis=points_per_axis, check_no_wind=check_without_wind).get_points()
+    def __init__(self, pass_env_params, render_mode=None, points_per_axis = 3, check_without_wind = True, **env_params):
+        super().__init__(pass_env_params, render_mode, **env_params)
+        self.test_parameters = ValidationHypercube(points_per_axis=points_per_axis, check_no_wind=check_without_wind, **env_params).get_points()
         self.iter = 0
     
     
@@ -170,7 +167,7 @@ class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
                                   enable_wind=enable_wind, wind_power=wind_power, turbulence_power=turbulence_power), self.pass_env_params, 
                                     self.gravity_lower, self.gravity_upper, self.wind_power_lower,
                                     self.wind_power_upper, self.turbulence_power_lower, self.turbulence_power_upper)
-        if self.determenistic_reset:
+        if self.deterministic_reset:
             return DetermenisticResetWrapper(env, self.seed)
         else:
             return env

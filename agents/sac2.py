@@ -1,5 +1,3 @@
-import Networks
-from . import ReplayBuffer
 from . import SACAgent
 import Networks
 import torch
@@ -38,7 +36,7 @@ class SACAgent2(SACAgent):
 
         # Bellman update using current policy and new observation
         with torch.no_grad():
-            next_action, logprobs = self.pi.sample_normal(new_obs)
+            next_action, logprobs = self.pi.sample_normal(new_obs, reparameterize=True)
             q1_target = self.q_1_target(new_obs, next_action)
             q2_target = self.q_2_target(new_obs, next_action)
             q_target = torch.min(q1_target, q2_target)
@@ -52,7 +50,7 @@ class SACAgent2(SACAgent):
     
     def compute_loss_pi(self, obs):
         # update policy
-        action, logprobs = self.pi.sample_normal(obs)
+        action, logprobs = self.pi.sample_normal(obs, reparameterize=True)
         q1 = self.q_1(obs, action)
         q2 = self.q_2(obs, action)
         q = torch.min(q1, q2)
@@ -66,7 +64,6 @@ class SACAgent2(SACAgent):
         sample = self.replay_buffer.get_batch(self.batch_size)
         obs, actions, rewards, new_obs, done = sample['o'], sample['a'], sample['r'], sample['o2'], sample['d']
 
-        
         # Convert samples to tensors
         obs = torch.tensor(obs, dtype=torch.float, device=self.device)
         actions = torch.tensor(actions, dtype=torch.float, device=self.device)
@@ -106,7 +103,7 @@ class SACAgent2(SACAgent):
 
         return loss_results
 
-    def update(self):
+    def update_target_network(self):
 
         with torch.no_grad():
             for q1_param, target_q1_param in zip(self.q_1.parameters(), self.q_1_target.parameters()):

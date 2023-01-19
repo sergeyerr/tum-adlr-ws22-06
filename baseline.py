@@ -21,6 +21,7 @@ from utils import print_run_info, validate
 
 device = T.device('cuda' if T.cuda.is_available() else 'cpu')
 
+
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def train(cfg : DictConfig):
     agent_args = cfg.agent
@@ -33,24 +34,31 @@ def train(cfg : DictConfig):
     
    # env = LunarRandomizerWrapper(pass_env_params=training_args.pass_env_parameters, **env_args)
     if env_args.random:
-        train_env_fabric = LunarEnvRandomFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters)
+        train_env_fabric = LunarEnvRandomFabric(pass_env_params=training_args.pass_env_parameters, **env_args)
         if validation_args.hypercube_validation:
-            test_env_fabric = LunarEnvHypercubeFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters,  
-                                                      render_mode= 'rgb_array', points_per_axis=validation_args.hypercube_points_per_axis)
-            validation_args.eval_eps = test_env_fabric.number_of_test_points()
+            test_env_fabric = LunarEnvHypercubeFabric(pass_env_params=training_args.pass_env_parameters,
+                                                      render_mode= 'rgb_array',
+                                                      points_per_axis=validation_args.hypercube_points_per_axis,
+                                                      **env_args)
+            validation_args.n_eval_tasks = test_env_fabric.number_of_test_points()
         else:
             test_env_fabric = LunarEnvRandomFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters,
                                                    render_mode= 'rgb_array')
     else:
         train_env_fabric = LunarEnvFixedFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters)
         test_env_fabric = LunarEnvFixedFabric(env_params=env_args, pass_env_params=training_args.pass_env_parameters,  render_mode= 'rgb_array')
+
     env = train_env_fabric.generate_env()
+
+    eval_tasks = create_train_tasks(test_env_fabric, validation_args.n_eval_tasks )
+
     if not training_args.random:
         T.manual_seed(training_args.seed)
         T.backends.cudnn.deterministic = True
         T.backends.cudnn.benchmark = False
         np.random.seed(training_args.seed)
         random.seed(training_args.seed)
+        
     #env.seed(args.seed)
     
     # Weights and biases initialization
@@ -77,7 +85,7 @@ def train(cfg : DictConfig):
         OmegaConf.save(cfg, f)
 
     n_actions = env.action_space.shape[0] if type(env.action_space) == gym.spaces.box.Box else env.action_space.n
-    env_info = {"input_dims":env.observation_space.shape, "n_actions": n_actions, "max_action": env.action_space.high}
+    env_info = {"input_dims": env.observation_space.shape, "n_actions": n_actions, "max_action": env.action_space.high}
 
     # TODO: Modify this to call any other algorithm
     if agent_args.name == "ddpg":
@@ -86,10 +94,8 @@ def train(cfg : DictConfig):
         algorithm = SACAgent
     elif agent_args.name == "sac2":
         algorithm = SACAgent2
-    
 
-    agent = algorithm(**OmegaConf.to_object(agent_args), **OmegaConf.to_object(training_args),
-                      **env_info)
+    agent = algorithm(**OmegaConf.to_object(agent_args), **OmegaConf.to_object(training_args), **env_info)
     
     if validation_args.log_model_wandb:
         # assumes that the model has only one actor, we may also log different models differently
@@ -107,12 +113,10 @@ def train(cfg : DictConfig):
         
     print_run_info(env, agent, agent_args, training_args, env_args, validation_args, noise)
 
-
-    counter = 0
     reward_history = deque(maxlen=100)
-    
+
     t = 0
-    
+
     for episode in range(training_args.episodes):
         env = train_env_fabric.generate_env()
         obs, info = env.reset()
@@ -122,6 +126,9 @@ def train(cfg : DictConfig):
         episode_reward = 0.0
         actor_loss = 0.0
         critic_loss = 0.0
+
+    # TODO I think the episode length is not long enough for sac to learn to land. The agent only learns
+    #  to hover above the ground. Or I fucked up the sac while fixing sac2, because they share logic
 
         # Generate rollout
         for step in range(training_args.episode_length):
@@ -153,26 +160,37 @@ def train(cfg : DictConfig):
                     # Loss information kept for monitoring purposes during training
                     actor_loss += loss['actor_loss']
                     critic_loss += loss['critic_loss']
-                    wandb.log({"Training episode": episode, "Batch": (episode) * training_args.train_batches + i,
+                    wandb.log({"Training episode": episode, "Batch": episode * training_args.train_batches + i,
                             "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
-                agent.update()
-                
+                agent.update_target_network()
+
             t += 1
             # End episode if done
             if done:
                 break
-        
-               
+
         reward_history.append(episode_reward)
         print(f"Training episode: {episode} Episode reward: {episode_reward} Average reward: {np.mean(reward_history)}")
         print(f"Gravity: {gravity} Wind: {enable_wind} Wind power: {wind_power} Turbulence power: {turbulence_power}")
         wandb.log({"Training episode": episode, "Episode reward": episode_reward, "Average reward": np.mean(reward_history), 
                    "Gravity": gravity, "Wind": enable_wind, "Wind power": wind_power, "Turbulence power": turbulence_power})
+        solved_tasks = []
         if episode % validation_args.eval_interval == 0:
-            solved = validate(agent, validation_args, experiment_path, episode, test_env_fabric)
-            if solved:
+            for task_id, eval_task in enumerate(eval_tasks):
+                solved = validate(agent, validation_args, experiment_path, episode, eval_task, task_id)
+                if solved:
+                    print(f"solved task {task_id}!!")
+                    solved_tasks.append(solved)
+                    break
+            if len(solved_tasks) == len(eval_tasks):
+                print(f"solved all tasks!!")
                 break
-                    
-                    
+
+def create_train_tasks(env_fabric, num_tasks):
+    envs = []
+    for t in range(num_tasks):
+        envs.append(env_fabric.generate_env())
+    return envs
+
 if __name__=='__main__':
     train()

@@ -1,0 +1,25 @@
+n_train_tasks: 50 # number of tasks for meta training 100
+n_eval_tasks: 3 # number of tasks for evaluating adoption 30 NOT USING THIS INSTEAD VALIDATION IS ON GRID
+meta_batch: 16 # number of tasks to average the gradient across 64
+num_iterations: 500 # number of data sampling / training iterates
+num_train_steps_per_itr: 2000
+num_initial_steps: 2000 # number of transitions collected per task before training
+num_tasks_sample: 5 # number of randomly sampled tasks to collect data for each iteration
+num_steps_prior: 600 # number of transitions to collect per task with z ~ prior
+num_steps_posterior: 0 # number of transitions to collect per task with z ~ posterior
+num_extra_rl_steps_posterior: 600 # number of additional transitions to collect per task with z ~ posterior that are only used to train the policy and NOT the encoder
+num_evals: 2 # number of independent evals / we use eval_eps instead
+num_steps_per_eval: 600  # nuumber of transitions to eval on
+batch_size: 256 # number of transitions in the RL batch 1024
+embedding_batch_size: 64 # number of transitions in the context batch 1024
+embedding_mini_batch_size: 64 # number of context transitions to backprop through (should equal the arg above except in the recurrent encoder case) 1024
+max_path_length: 1000 #200 max path length for this environment
+reward_scale: 5.0 # scale rewards before constructing Bellman update, effectively controls weight on the entropy of the policy
+num_exp_traj_eval: 1 # how many exploration trajs to collect before beginning posterior sampling at test time
+update_post_train: 1 # how often to resample the context when collecting data during training (in trajectories)
+eval_deterministic: True
+save_replay_buffer: False
+save_algorithm: False
+save_environment: False
+render_eval_paths: False
+dump_eval_paths: False # whether to save evaluation trajectories

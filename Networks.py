@@ -109,8 +109,10 @@ class SACCriticNetwork(nn.Module):
         self.fc1_dims = fc1_dims
         self.fc2_dims = fc2_dims
         self.n_actions = n_actions
+        if isinstance(input_dims, list):
+            self.input_dims = int(np.prod(input_dims))
 
-        self.fc1 = nn.Linear(self.input_dims[0]+n_actions, self.fc2_dims)
+        self.fc1 = nn.Linear(self.input_dims+n_actions, self.fc2_dims)
         self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)
         self.q = nn.Linear(self.fc2_dims, 1)
 
@@ -118,6 +120,7 @@ class SACCriticNetwork(nn.Module):
         self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
 
         self.to(self.device)
+
 
     def forward(self, state, action):
         action_value = self.fc1(T.cat([state, action], dim=1))
@@ -136,8 +139,10 @@ class SACValueNetwork(nn.Module):
             self.input_dims = input_dims
             self.fc1_dims = fc1_dims
             self.fc2_dims = fc2_dims
+            if isinstance(input_dims, list):
+                self.input_dims = int(np.prod(input_dims))
 
-            self.fc1 = nn.Linear(*self.input_dims, self.fc1_dims)
+            self.fc1 = nn.Linear(self.input_dims, self.fc1_dims)
             self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)
             self.v = nn.Linear(self.fc2_dims, 1)
 
@@ -158,8 +163,7 @@ class SACValueNetwork(nn.Module):
 
 
 class SACActorNetwork(nn.Module):
-    def __init__(self, alpha, input_dims, max_action, fc1_dims=256,
-            fc2_dims=256, n_actions=2):
+    def __init__(self, alpha, input_dims, max_action, fc1_dims=256, fc2_dims=256, n_actions=2):
         super(SACActorNetwork, self).__init__()
         self.input_dims = input_dims
         self.fc1_dims = fc1_dims
@@ -168,7 +172,10 @@ class SACActorNetwork(nn.Module):
         self.max_action = max_action
         self.reparam_noise = 1e-6
 
-        self.fc1 = nn.Linear(*self.input_dims, self.fc1_dims)
+        if isinstance(input_dims, list):
+            self.input_dims = int(np.prod(input_dims))
+
+        self.fc1 = nn.Linear(self.input_dims, self.fc1_dims)
         self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)
         self.mu = nn.Linear(self.fc2_dims, self.n_actions)
         self.sigma = nn.Linear(self.fc2_dims, self.n_actions)
@@ -195,27 +202,61 @@ class SACActorNetwork(nn.Module):
 
         return mu, sigma
 
-    def sample_normal(self, state, reparameterize=True, deterministic=False):
+    def sample_normal(self, state, reparameterize, deterministic=False, return_log_prob=False):
         mu, sigma = self.forward(state)
-        # in spinning up: torch.distributions.normal.Normal()
         probabilities = torch.distributions.normal.Normal(mu, sigma)
-        # probabilities = torch.distributions.Normal(mu, sigma)
 
         if reparameterize:
-            actions = probabilities.rsample()
+            action = probabilities.rsample()
         else:
-            actions = probabilities.sample()
+            action = probabilities.sample()
 
         if deterministic:
-            actions = mu
+            action = mu
 
-        # action = T.tanh(actions)*T.tensor(self.max_action).to(self.device)
-        # log_probs = probabilities.log_prob(actions)
-        # log_probs -= T.log(1-action.pow(2)+self.reparam_noise)
-        # log_probs = log_probs.sum(1, keepdim=True)
         # in spinning up it is:
-        log_probs = probabilities.log_prob(actions).sum(axis=-1)
-        log_probs -= (2*(np.log(2) - actions - F.softplus(-2*actions))).sum(axis=-1)
-        action = T.tanh(actions)*T.tensor(self.max_action).to(self.device)
+        log_probs = probabilities.log_prob(action).sum(axis=-1)
+        log_probs -= (2*(np.log(2) - action - F.softplus(-2*action))).sum(axis=-1)
+        tanh_action = T.tanh(action)*T.tensor(self.max_action).to(self.device)
 
-        return action, log_probs
+        if return_log_prob:
+            # this is from the pearl implementation
+            log_probs = probabilities.log_prob(action)
+            log_probs -= T.log(1 - tanh_action*tanh_action + self.reparam_noise)
+            log_probs = log_probs.sum(dim=1, keepdims=True)
+            return tanh_action, mu, T.log(sigma), log_probs, action
+        else:
+            return tanh_action, log_probs
+
+
+class ContextEncoder(nn.Module):
+    def __init__(self, alpha, input_size, out_size, fc1_dims=200, fc2_dims=200, fc3_dims=200):
+        super(ContextEncoder, self).__init__()
+        self.fc1_dims = fc1_dims
+        self.fc2_dims = fc2_dims
+        self.fc3_dims = fc3_dims
+        self.input_size = input_size  # obs_dim+act_dim+latent_dim = 11
+        self.out_size = out_size
+        if isinstance(input_size, list):
+            self.input_size = int(np.prod(input_size))
+
+        self.fc1 = nn.Linear(self.input_size, self.fc1_dims)
+        self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims)
+        self.fc3 = nn.Linear(self.fc2_dims, self.fc3_dims)
+        self.z_layer = nn.Linear(self.fc3_dims, self.out_size)
+
+        self.optimizer = optim.Adam(self.parameters(), lr=alpha)
+        self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
+
+        self.to(self.device)
+
+    def forward(self, context):
+        value = self.fc1(context)
+        value = F.relu(value)
+        value = self.fc2(value)
+        value = F.relu(value)
+        value = self.fc3(value)
+        value = F.relu(value)
+        latent_z = self.z_layer(value)
+
+        return latent_z

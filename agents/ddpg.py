@@ -1,10 +1,8 @@
-import Networks
-from .ReplayBuffer import ReplayBuffer
+from DataHandling.ReplayBuffer import ReplayBuffer
 import Networks
 import torch
 import os
 import numpy as np
-import random
 
 
 class DDPGAgent(object):
@@ -21,13 +19,17 @@ class DDPGAgent(object):
 
         # Neural networks
         # Policy Network
-        self.pi = Networks.DDPGActor(alpha=self.pi_lr, input_dims=self.input_dims, n_actions=self.n_actions).to(self.device)
-        self.target_pi = Networks.DDPGActor(alpha=self.pi_lr, input_dims=self.input_dims, n_actions=self.n_actions).to(self.device)
+        self.pi = Networks.DDPGActor(alpha=self.pi_lr, input_dims=self.input_dims,
+                                     n_actions=self.n_actions).to(self.device)
+        self.target_pi = Networks.DDPGActor(alpha=self.pi_lr, input_dims=self.input_dims,
+                                            n_actions=self.n_actions).to(self.device)
         self.pi_optimizer = self.pi.optimizer
 
         # Evaluation Network
-        self.q = Networks.DDPGCritic(beta=self.q_lr, input_dims=self.input_dims, n_actions=self.n_actions).to(self.device)
-        self.target_q = Networks.DDPGCritic(beta=self.q_lr, input_dims=self.input_dims, n_actions=self.n_actions).to(self.device)
+        self.q = Networks.DDPGCritic(beta=self.q_lr, input_dims=self.input_dims,
+                                     n_actions=self.n_actions).to(self.device)
+        self.target_q = Networks.DDPGCritic(beta=self.q_lr, input_dims=self.input_dims,
+                                            n_actions=self.n_actions).to(self.device)
         self.q_optimizer = self.q.optimizer
 
         # Sync weights
@@ -117,7 +119,7 @@ class DDPGAgent(object):
     def experience(self, o, a, r, o2, d):
         self.replay_buffer.record(o, a, r, o2, d)
 
-    def update(self):
+    def update_target_network(self):
         with torch.no_grad():
             for pi_param, target_pi_param in zip(self.pi.parameters(), self.target_pi.parameters()):
                 target_pi_param.data = (1.0 - self.tau) * target_pi_param.data + self.tau * pi_param.data
