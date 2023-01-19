@@ -128,7 +128,6 @@ class PEARLExperiment(object):
                 for idx, env in enumerate(self.train_tasks):
                     env.reset()
                     self.task_idx = idx
-                    # TODO why do this if we clear encoder replay buffer later
                     self.roll_out(self.training_args["num_initial_steps"], 1, np.inf)
             # Sample data from train tasks.
             print('Sample data from train tasks')
@@ -171,6 +170,7 @@ class PEARLExperiment(object):
                   f" Average reward: {np.mean(reward_history)}")
             wandb.log({"Training episode": episode, "Episode reward": self.episode_reward,
                        "Average reward": np.mean(reward_history)})
+
             if episode % self.validation_args["eval_interval"] == 0:
                 print("starting evaluation")
                 solved_tasks = []
@@ -180,12 +180,11 @@ class PEARLExperiment(object):
                     if solved:
                         print(f"solved task {task_id}!!")
                         solved_tasks.append(solved)
-                        break
+
                 if len(solved_tasks) == len(self.eval_tasks):
                     print(f"solved all tasks!!")
                     break
                 print("evaluation over")
-
 
     def create_train_tasks(self, env_fabric, num_tasks):
         envs = []

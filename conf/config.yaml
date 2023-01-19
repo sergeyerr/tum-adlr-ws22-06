@@ -39,7 +39,7 @@ validation:
   eval_interval: 5
   record_video_on_eval: True
   validation_episode_length: 1000
-  validation_traj_num: 100
+  validation_traj_num: 10
   log_actions: True
 
   num_exp_traj_eval: 1
