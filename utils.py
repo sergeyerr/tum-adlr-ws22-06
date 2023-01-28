@@ -70,24 +70,15 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
     gravity, enable_wind, wind_power, turbulence_power = in_eval_task.gravity, in_eval_task.enable_wind,\
         in_eval_task.wind_power, in_eval_task.turbulence_power
 
-    if pearl:
-        evaluation_episodes = range(validation_args["eval_eps"])
-        record_video_on_eval = validation_args["record_video_on_eval"]
-        log_actions = validation_args["log_actions"]
-        validation_episode_length = validation_args["validation_episode_length"]
-        eval_stop_condition = validation_args["eval_stop_condition"]
-        validation_traj_num = validation_args["validation_traj_num"]
-    else:
-        evaluation_episodes = range(validation_args.eval_eps)
-        record_video_on_eval = validation_args.record_video_on_eval
-        log_actions = validation_args.log_actions
-        validation_episode_length = validation_args.validation_episode_length
-        eval_stop_condition = validation_args.eval_stop_condition
-        validation_traj_num = validation_args.validation_traj_num
+    evaluation_episodes = range(validation_args["eval_eps"])
+    record_video_on_eval = validation_args["record_video_on_eval"]
+    log_actions = validation_args["log_actions"]
+    validation_episode_length = validation_args["validation_episode_length"]
+    eval_stop_condition = validation_args["eval_stop_condition"]
+    validation_traj_num = validation_args["validation_traj_num"]
 
     for evaluation_episode in evaluation_episodes:
 
-        num_traj = 0
         rewards = 0
 
         # log step-action-reward plot for each validation episode
@@ -113,6 +104,9 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
                         f"gravity: {gravity}\n enable_wind: {enable_wind}\n, wind_power: {wind_power}\n, turbulence_power: {turbulence_power}\n")
             else:
                 eval_task = in_eval_task
+
+            if pearl and traj >= validation_args["num_exp_traj_eval"]:
+                agent.infer_posterior(agent.context)
 
             obs, info = eval_task.reset()
 
@@ -148,11 +142,6 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
             # want to finish the evaluation once the average stop_reward over all trajectories is above threshold
             stop_reward.append(rewards)
 
-            num_traj += 1
-            if pearl and num_traj > validation_args["num_exp_traj_eval"]:
-                agent.infer_posterior(agent.context)
-
-
         # seems to save only the last plot
         if log_actions and evaluation_episode == 0:
             wandb.log({"Validation after episode": episode,
@@ -171,43 +160,40 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
                         "Video": wandb.Video(os.path.join(video_path, "rl-video-episode-0.mp4"), fps=4, format="gif",
                                              caption=f"gravity: {gravity}, wind: {enable_wind}, wind power: {wind_power}, turbulence power: {turbulence_power}, episode: {episode}")})
 
+        avg_reward = round(sum(stop_reward) / len(stop_reward), 3)
+        min_reward = round(min(stop_reward), 3)
 
-    avg_reward = round(sum(stop_reward) / len(stop_reward), 3)
-    min_reward = round(min(stop_reward), 3)
-    
-    if eval_stop_condition == "avg":
-        stop_reward = avg_reward
-    elif eval_stop_condition == "min":
-        stop_reward = min_reward
-    else:
-        raise ValueError(f"Unknown eval_stop_condition {eval_stop_condition}")
-    
-    save_path = os.path.join(experiment_path, "saves")
-    
-    agent.save_agent(save_path)
-    
-    
-    art = wandb.Artifact("lunar_lander_model", type="model")
-    for f in os.listdir(save_path):
-        art.add_file(os.path.join(save_path, f))
-    wandb.log_artifact(art)
-    
-    
-    print(f"Episode: {episode} | Average evaluation reward: {avg_reward} | Min evaluation reward: {min_reward} | Agent saved at {save_path}")
-    
-    wandb.log({"Validation after episode": episode,  "Average evaluation reward": avg_reward,
-               "Min evaluation reward": min_reward})
-    with open(f"{experiment_path}/evaluation_rewards.csv", "a") as f:
-        f.write(f"{episode}, {stop_reward}\n")
-    try:
-        if stop_reward > eval_task.spec.reward_threshold * 1.1:  # x 1.1 because of small eval_episodes
-            print(f"Environment solved after {episode} episodes")
-            return True
-    except Exception as e:
-        if stop_reward > -120:
-            print(f"Environment solved after {episode} episodes")
-            return True
-    return False
+        if eval_stop_condition == "avg":
+            stop_reward = avg_reward
+        elif eval_stop_condition == "min":
+            stop_reward = min_reward
+        else:
+            raise ValueError(f"Unknown eval_stop_condition {eval_stop_condition}")
+
+        save_path = os.path.join(experiment_path, "saves")
+
+        agent.save_agent(save_path)
+
+        art = wandb.Artifact("lunar_lander_model", type="model")
+        for f in os.listdir(save_path):
+            art.add_file(os.path.join(save_path, f))
+        wandb.log_artifact(art)
+
+        print(f"Episode: {episode} | Average evaluation reward: {avg_reward} | Min evaluation reward: {min_reward} | Agent saved at {save_path}")
+
+        wandb.log({"Validation after episode": episode,  "Average evaluation reward": avg_reward,
+                   "Min evaluation reward": min_reward})
+        with open(f"{experiment_path}/evaluation_rewards.csv", "a") as f:
+            f.write(f"{episode}, {stop_reward}\n")
+        try:
+            if stop_reward > eval_task.spec.reward_threshold * 1.1:  # x 1.1 because of small eval_episodes
+                print(f"Environment solved after {episode} episodes")
+                return True
+        except Exception as e:
+            if stop_reward > -120:
+                print(f"Environment solved after {episode} episodes")
+                return True
+        return False
 
 def get_agent_from_run_cfg(run_cfg):
     agent_args = run_cfg['agent']

@@ -130,14 +130,22 @@ class LunarEnvRandomFabric(LunarEnvFixedFabric):
         
         env = StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
                             render_mode=self.render_mode_pass, gravity=gravity, 
-                            enable_wind=enable_wind, wind_power=wind_power, turbulence_power=turbulence_power), self.pass_env_params, 
+                            enable_wind=enable_wind, wind_power=wind_power, turbulence_power=turbulence_power), False,
                             self.gravity_lower, self.gravity_upper, self.wind_power_lower,
                             self.wind_power_upper, self.turbulence_power_lower, self.turbulence_power_upper)
+
+        env_with_params = StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
+                                                        render_mode=self.render_mode_pass, gravity=gravity,
+                                                        enable_wind=enable_wind, wind_power=wind_power,
+                                                        turbulence_power=turbulence_power), True,
+                                               self.gravity_lower, self.gravity_upper, self.wind_power_lower,
+                                               self.wind_power_upper, self.turbulence_power_lower,
+                                               self.turbulence_power_upper)
         
         if self.deterministic_reset:
-            return DetermenisticResetWrapper(env, self.seed)
+            return DetermenisticResetWrapper(env, self.seed), DetermenisticResetWrapper(env_with_params, self.seed),
         else:
-            return env
+            return env, env_with_params
         
     def get_uniform_parameters(self):
         gravity = random.uniform(self.gravity_lower, self.gravity_upper)
@@ -164,13 +172,21 @@ class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
         self.iter = self.iter % len(self.test_parameters)
         env = StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
                                   render_mode=self.render_mode_pass, gravity=gravity, 
-                                  enable_wind=enable_wind, wind_power=wind_power, turbulence_power=turbulence_power), self.pass_env_params, 
+                                  enable_wind=enable_wind, wind_power=wind_power, turbulence_power=turbulence_power), False,
                                     self.gravity_lower, self.gravity_upper, self.wind_power_lower,
                                     self.wind_power_upper, self.turbulence_power_lower, self.turbulence_power_upper)
+
+        env_with_params = StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
+                                            render_mode=self.render_mode_pass, gravity=gravity,
+                                            enable_wind=enable_wind, wind_power=wind_power,
+                                            turbulence_power=turbulence_power), True,
+                                   self.gravity_lower, self.gravity_upper, self.wind_power_lower,
+                                   self.wind_power_upper, self.turbulence_power_lower, self.turbulence_power_upper)
+
         if self.deterministic_reset:
-            return DetermenisticResetWrapper(env, self.seed)
+            return DetermenisticResetWrapper(env, self.seed), DetermenisticResetWrapper(env_with_params, self.seed)
         else:
-            return env
+            return env, env_with_params
         
         
     def number_of_test_points(self):

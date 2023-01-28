@@ -71,9 +71,6 @@ class PEARLAgent(SACAgent):
         self.policy_mean_reg_weight = kwargs["policy_mean_reg_weight"]
         self.policy_std_reg_weight = kwargs["policy_std_reg_weight"]
         self.policy_pre_activation_weight = kwargs["policy_pre_activation_weight"]
-        self.num_steps_prior = kwargs["num_steps_prior"]
-        self.num_steps_posterior = kwargs["num_steps_posterior"]
-        self.num_extra_rl_steps_posterior = kwargs["num_extra_rl_steps_posterior"]
         self.embedding_batch_size = kwargs["embedding_batch_size"]
         self.batch_size = kwargs["batch_size"]
 
