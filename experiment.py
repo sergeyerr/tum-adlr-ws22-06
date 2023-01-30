@@ -23,7 +23,6 @@ from baseline_train import BaselineExperiment
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def experiment(cfg: DictConfig):
-    agent_args = cfg.agent
     env_args = cfg.env
     validation_args = cfg.validation
     training_args = cfg.training
@@ -47,6 +46,7 @@ def experiment(cfg: DictConfig):
     eval_tasks, eval_tasks_with_params = create_train_tasks(test_env_fabric, validation_args.n_eval_tasks)
 
     config_dict = OmegaConf.to_object(cfg)
+    config_dict["training"]["pass_env_parameters"] = False
     # pearl
     config_dict["agent"]["name"] = "pearl"
     pearl_experiment = PEARLExperiment(config_dict, train_tasks, eval_tasks)
@@ -56,6 +56,8 @@ def experiment(cfg: DictConfig):
     config_dict["agent"]["name"] = "sac"
     sac_experiment = BaselineExperiment(config_dict, train_tasks, eval_tasks)
     sac_experiment.run()
+
+    config_dict["training"]["pass_env_parameters"] = True
     # sac with environment parameters
     config_dict["agent"]["name"] = "sac"
     sac_experiment = BaselineExperiment(config_dict, train_tasks_with_params, eval_tasks_with_params)

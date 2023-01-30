@@ -52,18 +52,21 @@ class PEARLExperiment(object):
 
     def run(self):
 
-        experiment_name = self.agent_args["experiment_name"]
+        if self.general_training_args["pass_env_parameters"]:
+            print("It is not possible to run PEARL with pass_env_parameters set to True\n returning from experiment")
+            return
+        else:
+            experiment_name = self.agent_args["experiment_name"]
 
-        T.manual_seed(self.general_training_args["seed"])
-        T.backends.cudnn.deterministic = True
-        T.backends.cudnn.benchmark = False
-        np.random.seed(self.general_training_args["seed"])
-        random.seed(self.general_training_args["seed"])
-        # env.seed(self.args.seed)
+        if not self.general_training_args["random"]:
+            T.manual_seed(self.general_training_args["seed"])
+            T.backends.cudnn.deterministic = True
+            T.backends.cudnn.benchmark = False
+            np.random.seed(self.general_training_args["seed"])
+            random.seed(self.general_training_args["seed"])
 
         # Weights and biases initialization
-        wandb.init(project="ADLR randomized envs with Meta RL", entity="tum-adlr-ws22-06",
-                   config=self.cfg)
+        # wandb.init(project="ADLR randomized envs with Meta RL", entity="tum-adlr-ws22-06", config=self.cfg)
         wandb.init(mode="disabled")
 
         # Experiment directory storage
@@ -75,15 +78,18 @@ class PEARLExperiment(object):
         experiment_counter = 0
         while True:
             try:
-                experiment_path = os.path.join(env_path, f"{experiment_name}_{experiment_counter}")
+                experiment_path = os.path.join(env_path, f"experiment_{experiment_counter}")
                 os.mkdir(experiment_path)
-                os.mkdir(os.path.join(experiment_path, "saves"))
                 break
             except FileExistsError as e:
                 experiment_counter += 1
 
         with open(os.path.join(experiment_path, 'parameters.json'), 'w') as f:
             OmegaConf.save(self.cfg, f)
+
+        agent_experiment_path = os.path.join(experiment_path, f"{experiment_name}")
+        os.mkdir(agent_experiment_path)
+        os.mkdir(os.path.join(agent_experiment_path, "saves"))
 
         if self.validation_args["log_model_wandb"]:
             # assumes that the model has only one actor, we may also log different models differently
@@ -98,6 +104,7 @@ class PEARLExperiment(object):
                        self.validation_args, noise)
 
         reward_history = deque(maxlen=100)
+        solved_tasks = [None] * self.validation_args["n_eval_tasks"]
 
         # meta-training loop
         # at each iteration, we first collect data from tasks, perform meta-updates, then try to evaluate
@@ -156,22 +163,101 @@ class PEARLExperiment(object):
 
             if episode % self.validation_args["eval_interval"] == 0:
                 print("starting evaluation")
-                solved_tasks = []
                 for task_id, eval_task in enumerate(self.eval_tasks):
-                    solved = validate(self.agent, self.validation_args, experiment_path, episode,
+                    solved = validate(self.agent, self.validation_args, agent_experiment_path, episode,
                                       eval_task, task_id, pearl=True)
                     if solved:
                         print(f"solved task {task_id}!!")
-                        solved_tasks.append(solved)
+                        solved_tasks[task_id] = solved
 
-                if len(solved_tasks) == len(self.eval_tasks):
-                    print(f"solved all tasks in a row!!")
+                if all(solved_tasks):
+                    print(f"solved all tasks (but not necessarily in a row)!!")
                     break
                 print("evaluation over")
 
     # one path length is between 80 - 200 steps. This means during data collection we only collect one trajectory
     # per iteration. This seems way too few.
+    # This function seems to be way to complicated. I think in the reference implementation this was done to ensure that
+    # complete paths are collected (important for RNN).
+    # In our case it would be better to refactor the function to have less nested loops
+
     def roll_out(self, num_samples, resample_z_rate, update_posterior_rate, add_to_enc_buffer=True):
+
+        # start from the prior
+        self.agent.clear_z()
+        total_num_samples = 0
+        num_trajs = 0
+        paths = []
+        env = self.train_tasks[self.task_idx]
+
+        while total_num_samples < num_samples:
+
+            observations = []
+            actions = []
+            rewards = []
+            terminals = []
+            o, _ = env.reset()
+            next_o = None
+
+            # inner most loop
+            # here we interact with the environment
+            for step in range(self.general_training_args["max_path_length"]):  # max path length=1000 >> num_samples=100
+                a = self.agent.action(o, addNoise=True)
+                next_o, r, d, _, _ = env.step(a)
+                observations.append(o)
+                rewards.append(r)
+                terminals.append(d)
+                actions.append(a)
+                o = next_o
+                self.episode_reward += r
+                total_num_samples += 1
+
+                # in baseline the training happens at this point
+                # for that we would have to add the above observations etc. to the replay buffer
+                # we could add the transitions directly to the buffer instead of collecting paths and adding
+                # the paths
+                if d:
+                    break
+            num_trajs += 1
+
+            actions = np.array(actions)
+            if len(actions.shape) == 1:
+                actions = np.expand_dims(actions, 1)
+
+            observations = np.array(observations)
+            if len(observations.shape) == 1:
+                observations = np.expand_dims(observations, 1)
+                next_o = np.array([next_o])
+
+            next_observations = np.vstack((observations[1:, :], np.expand_dims(next_o, 0)))
+            path = dict(
+                o=observations,  # np.array [[1,2,4,5],[1,2,4,5],[1,2,4,5],...]
+                a=actions,
+                r=np.array(rewards).reshape(-1, 1),  # [[1],[1.4],[34],...]
+                o2=next_observations,
+                d=np.array(terminals).reshape(-1, 1),  # [[false],[false],[true],...]
+            )
+
+            paths.append(path)
+
+            if num_trajs % resample_z_rate == 0:
+                self.agent.sample_z()
+
+        self.agent.replay_buffer.add_paths(self.task_idx, paths)
+        if add_to_enc_buffer:
+            self.agent.encoder_replay_buffer.add_paths(self.task_idx, paths)
+        if update_posterior_rate != np.inf:
+            context = self.agent.encoder_replay_buffer.sample_random_batch(self.task_idx,
+                                                                           self.training_args[
+                                                                               "embedding_batch_size"],
+                                                                           sample_context=True,
+                                                                           use_next_obs_in_context=
+                                                                           self.agent_args[
+                                                                               "use_next_obs_in_context"])
+            self.agent.infer_posterior(context)
+
+
+    def roll_out2(self, num_samples, resample_z_rate, update_posterior_rate, add_to_enc_buffer=True):
         # start from the prior
         self.agent.clear_z()
         num_transitions = 0
@@ -193,7 +279,7 @@ class PEARLExperiment(object):
 
                 # inner most loop
                 # here we interact with the environment
-                while path_length < self.training_args["max_path_length"]:  # max path length=1000 >> num_samples=100
+                while path_length < self.general_training_args["max_path_length"]:  # max path length=1000 >> num_samples=100
                     a = self.agent.action(o, addNoise=True)
                     next_o, r, d, _, _ = env.step(a)
                     observations.append(o)

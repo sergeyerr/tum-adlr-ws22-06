@@ -38,7 +38,10 @@ class BaselineExperiment(object):
 
     def run(self):
 
-        experiment_name = self.agent_args["experiment_name"]
+        if self.general_training_args["pass_env_parameters"]:
+            experiment_name = self.agent_args["experiment_name"] + "_pass_params"
+        else:
+            experiment_name = self.agent_args["experiment_name"]
 
         if not self.general_training_args["random"]:
             T.manual_seed(self.general_training_args["seed"])
@@ -48,7 +51,7 @@ class BaselineExperiment(object):
             random.seed(self.general_training_args["seed"])
 
         # Weights and biases initialization
-        wandb.init(project="ADLR randomized envs", entity="tum-adlr-ws22-06", config=self.cfg)
+        # wandb.init(project="ADLR randomized envs", entity="tum-adlr-ws22-06", config=self.cfg)
         wandb.init(mode="disabled")
 
         # Experiment directory storage
@@ -56,19 +59,22 @@ class BaselineExperiment(object):
         if not os.path.exists(env_path):
             os.makedirs(env_path)
 
-        #ugly, but acceptable
+        # ugly, but acceptable
         experiment_counter = 0
         while True:
             try:
-                experiment_path = os.path.join(env_path, f"{experiment_name}_{experiment_counter}")
+                experiment_path = os.path.join(env_path, f"experiment_{experiment_counter}")
                 os.mkdir(experiment_path)
-                os.mkdir(os.path.join(experiment_path, "saves"))
                 break
             except FileExistsError as e:
                 experiment_counter += 1
 
         with open(os.path.join(experiment_path, 'parameters.json'), 'w') as f:
             OmegaConf.save(self.cfg, f)
+
+        agent_experiment_path = os.path.join(experiment_path, f"{experiment_name}")
+        os.mkdir(agent_experiment_path)
+        os.mkdir(os.path.join(agent_experiment_path, "saves"))
 
         n_actions = self.train_tasks[0].action_space.shape[0] if\
             type(self.train_tasks[0].action_space) == gym.spaces.box.Box else self.train_tasks[0].action_space.n
@@ -98,46 +104,45 @@ class BaselineExperiment(object):
                        self.validation_args, noise)
 
         reward_history = deque(maxlen=100)
-        t = 0
+        solved_tasks = [None] * self.validation_args["n_eval_tasks"]
         for episode in range(self.general_training_args["episodes"]):
+            episode_reward = 0.0
+            actor_loss = 0.0
+            critic_loss = 0.0
+
             for i in range(self.general_training_args["num_tasks_sample"]):
                 idx = np.random.randint(self.general_training_args["n_train_tasks"])
                 env = self.train_tasks[idx]
-                obs, info = env.reset()
                 gravity, enable_wind, wind_power, turbulence_power = env.gravity, env.enable_wind, env.wind_power, env.turbulence_power
-                episode_reward = 0.0
-                actor_loss = 0.0
-                critic_loss = 0.0
 
-            # TODO I think the episode length is not long enough for sac to learn to land. The agent only learns
-            #  to hover above the ground. Or I fucked up the sac while fixing sac2, because they share logic
+                total_num_steps = 0
+                while total_num_steps < self.training_args["episode_length"]:
+                    obs, info = env.reset()
+                    # Generate rollout
+                    for step in range(self.general_training_args["max_path_length"]):
 
-                # Generate rollout
-                for step in range(self.training_args["episode_length"]):
+                        # Get actions
+                        with T.no_grad():
+                            if episode == 0 and total_num_steps < self.general_training_args["num_initial_steps"]:
+                                action = env.action_space.sample()
+                            else:
+                                action = agent.action(obs, addNoise=True, noise=noise)
 
-                    # Get actions
-                    # why no_grad()?
-                    with T.no_grad():
-                        if t >= self.general_training_args["num_initial_steps"]:
-                            action = agent.action(obs, addNoise=True, noise=noise)
-                        else:
-                            action = env.action_space.sample()
+                        # TODO Ignore the "done" signal if it comes from hitting the time horizon.
 
-                    # TODO Ignore the "done" signal if it comes from hitting the time horizon.
+                        # Take step in environment
+                        new_obs, reward, done, _, _ = env.step(action)
+                        episode_reward += reward
 
-                    # Take step in environment
-                    new_obs, reward, done, _, _ = env.step(action)
-                    episode_reward += reward
+                        # Store experience
+                        agent.experience(obs, action, reward, new_obs, done)
 
-                    # Store experience
-                    agent.experience(obs, action, reward, new_obs, done)
-
-                    # Update obs
-                    obs = new_obs
-                    t += 1
-                    # End episode if done
-                    if done:
-                        break
+                        # Update obs
+                        obs = new_obs
+                        total_num_steps += 1
+                        # End episode if done
+                        if done:
+                            break
 
             if agent.replay_buffer.size() > self.training_args["min_replay_size"]:
                 for train_step in range(self.general_training_args["num_train_steps_per_itr"]):
@@ -154,15 +159,15 @@ class BaselineExperiment(object):
             print(f"Gravity: {gravity} Wind: {enable_wind} Wind power: {wind_power} Turbulence power: {turbulence_power}")
             wandb.log({"Training episode": episode, "Episode reward": episode_reward, "Average reward": np.mean(reward_history),
                        "Gravity": gravity, "Wind": enable_wind, "Wind power": wind_power, "Turbulence power": turbulence_power})
-            solved_tasks = []
+
             if episode % self.validation_args["eval_interval"] == 0:
                 for task_id, eval_task in enumerate(self.eval_tasks):
                     solved = validate(agent, self.validation_args, experiment_path, episode, eval_task, task_id)
                     if solved:
                         print(f"solved task {task_id}!!")
-                        solved_tasks.append(solved)
+                        solved_tasks[task_id] = solved
 
-                if len(solved_tasks) == len(self.eval_tasks):
-                    print(f"solved all tasks in a row!!")
+                if all(solved_tasks):
+                    print(f"solved all tasks (but not necessarily in a row)!!")
                     break
 

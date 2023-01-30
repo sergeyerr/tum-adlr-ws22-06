@@ -125,7 +125,6 @@ class SACAgent2(SACAgent):
         if not os.path.exists(save_path):
             os.mkdir(save_path)
 
-
         critic_1_path = os.path.join(save_path, "q_1_network.pth")
         torch.save(self.q_1.state_dict(), critic_1_path)
 

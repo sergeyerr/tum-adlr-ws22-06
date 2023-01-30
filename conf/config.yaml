@@ -1,5 +1,6 @@
 agent:
   name: pearl # this is only used to determine which of the sub groups to use
+
   pearl:
     experiment_name: pearl_default_env
     tau: 0.005 # for SAC target network update
@@ -16,7 +17,8 @@ agent:
     use_next_obs_in_context: False # use next obs if it is useful in distinguishing tasks
     latent_size: 5 # dimension of latent space in context encoder
     net_size: 300 # number of neurons in hidden layer
-    reward_scale: 5.0 # scale rewards before constructing Bellman update, effectively controls weight on the entropy of the policy
+    reward_scale: 2.0 # scale rewards before constructing Bellman update, effectively controls weight on the entropy of the policy
+
   sac:
     pi_lr: 0.0003
     q_lr: 0.0003
@@ -24,6 +26,7 @@ agent:
     tau: 0.005
     reward_scale: 2
     experiment_name: sac_default_env
+
   sac2:
     pi_lr: 0.0001
     q_lr: 0.001
@@ -44,6 +47,8 @@ training:
   seed: 0
   noise: 'Ornstein' #'Zero','Gaussian', 'Ornstein'
   noise_param: 0.2
+  max_path_length: 1000 #200 max path length for this environment
+
 
   pearl:
     meta_batch: 16 # number of tasks to average the gradient across 64
@@ -53,13 +58,11 @@ training:
     # num_steps_per_eval: 600  # nuumber of transitions to eval on
     batch_size: 256 # number of transitions in the RL batch 1024
     embedding_batch_size: 64 # number of transitions in the context batch 1024
-    max_path_length: 1000 #200 max path length for this environment
     update_post_train: 1 # how often to resample the context when collecting data during training (in trajectories)
     replay_buffer_size: 1000000
 
   sac:
-    # from the papers
-    episode_length: 3000
+    episode_length: 2200 # I make this approximately the sum of num_steps_prior, num_steps_posterior, num_extra_rl_steps_posterior, num_initial_steps
     batch_size: 256
     train_batches: 1
     update_after: 1000
@@ -68,9 +71,7 @@ training:
     replay_buffer_size: 1000000
 
   sac2:
-    # copying from the spinning up implementation
-    # https://github.com/openai/spinningup/blob/master/spinup/algos/pytorch/sac/sac.py
-    episode_length: 3000
+    episode_length: 2200 # I make this approximately the sum of num_steps_prior, num_steps_posterior, num_extra_rl_steps_posterior, num_initial_steps
     batch_size: 64
     train_batches: 1
     update_after: 1000
@@ -78,27 +79,25 @@ training:
     min_replay_size: 1000
     replay_buffer_size: 1000000
 
-
 validation:
   log_model_wandb: True
   log_model_every_training_batch: 1000
 
   # hypercube validation is not possible (it makes no sense), if env is NOT random 
   hypercube_validation: True
-  hypercube_points_per_axis: 3 
+  hypercube_points_per_axis: 3 # maybe it makes sense to have 4 points on gravity axis, to not only test the extremes
   # eval_eps will be calculated automatically in case of hypercube validation
   eval_eps: 1 #50
   n_eval_tasks: 5 #in case of hypecube validation this will be overwritten by hypercube_points_per_axis
-
 
   eval_stop_condition: 'min' # 'min', 'avg': how results from eval_eps are aggregated
   eval_interval: 10
   record_video_on_eval: True
   validation_episode_length: 1000
   validation_traj_num: 2 # must be larger than num_exp_traj_eval, else pearl cannot collect context to inform the policy
+  num_exp_traj_eval: 1 # must be at least 1 and smaller than validation_traj_num
   log_actions: True
 
-  num_exp_traj_eval: 1 # must be at least 1 and smaller than validation_traj_num
 
 env:
   seed: 0
