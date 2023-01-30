@@ -50,7 +50,7 @@ class PEARLExperiment(object):
         self.episode_reward = 0.0
         self.task_idx = 0
 
-    def run(self):
+    def run(self, experiment_path, init_wandb):
 
         if self.general_training_args["pass_env_parameters"]:
             print("It is not possible to run PEARL with pass_env_parameters set to True\n returning from experiment")
@@ -66,26 +66,10 @@ class PEARLExperiment(object):
             random.seed(self.general_training_args["seed"])
 
         # Weights and biases initialization
-        # wandb.init(project="ADLR randomized envs with Meta RL", entity="tum-adlr-ws22-06", config=self.cfg)
-        wandb.init(mode="disabled")
-
-        # Experiment directory storage
-        env_path = os.path.join("experiments", "LunarLanderContinuous-v2")
-        if not os.path.exists(env_path):
-            os.makedirs(env_path)
-
-        # ugly, but acceptable
-        experiment_counter = 0
-        while True:
-            try:
-                experiment_path = os.path.join(env_path, f"experiment_{experiment_counter}")
-                os.mkdir(experiment_path)
-                break
-            except FileExistsError as e:
-                experiment_counter += 1
-
-        with open(os.path.join(experiment_path, 'parameters.json'), 'w') as f:
-            OmegaConf.save(self.cfg, f)
+        if init_wandb:
+            wandb.init(project="ADLR randomized envs with Meta RL", entity="tum-adlr-ws22-06", config=self.cfg)
+        else:
+            wandb.init(mode="disabled")
 
         agent_experiment_path = os.path.join(experiment_path, f"{experiment_name}")
         os.mkdir(agent_experiment_path)
@@ -126,6 +110,13 @@ class PEARLExperiment(object):
                 self.task_idx = idx
                 env = self.train_tasks[idx]
                 env.reset()
+
+                gravity, enable_wind, wind_power, turbulence_power = env.gravity, env.enable_wind, \
+                    env.wind_power, env.turbulence_power
+
+                print(f"Gravity: {round(gravity,3)}\t Wind: {enable_wind}\t Wind power: {round(wind_power,3)}\t"
+                      f" Turbulence power: {round(turbulence_power,3)}")
+
                 # TODO understand why we delete the replay buffer here although we filled it in loop before
                 self.agent.encoder_replay_buffer.clear_buffer(idx)
 
@@ -158,22 +149,26 @@ class PEARLExperiment(object):
             print(f"episode actor loss is: {loss['actor_loss']} \t episode critic loss is: {loss['critic_loss']}")
             print(f"Training episode: {episode} Episode reward: {self.episode_reward}"
                   f" Average reward: {np.mean(reward_history)}")
+            print("_______________________________________________________________\n\n\n")
             wandb.log({"Training episode": episode, "Episode reward": self.episode_reward,
                        "Average reward": np.mean(reward_history)})
 
+            # TODO maybe it makes sense to not evaluate tasks that have already been solved in previous episodes?
+            #  or maybe it makes sense to add to tasks to the training set which have similar environment params as
+            #  the ones that the agent struggles to solve
             if episode % self.validation_args["eval_interval"] == 0:
                 print("starting evaluation")
                 for task_id, eval_task in enumerate(self.eval_tasks):
                     solved = validate(self.agent, self.validation_args, agent_experiment_path, episode,
                                       eval_task, task_id, pearl=True)
                     if solved:
-                        print(f"solved task {task_id}!!")
+                        print(f"pearl solved task {task_id}!!")
                         solved_tasks[task_id] = solved
 
                 if all(solved_tasks):
-                    print(f"solved all tasks (but not necessarily in a row)!!")
+                    print(f"pearl solved all tasks (but not necessarily in a row)!!")
                     break
-                print("evaluation over")
+                print("evaluation over\n")
 
     # one path length is between 80 - 200 steps. This means during data collection we only collect one trajectory
     # per iteration. This seems way too few.
@@ -255,86 +250,3 @@ class PEARLExperiment(object):
                                                                            self.agent_args[
                                                                                "use_next_obs_in_context"])
             self.agent.infer_posterior(context)
-
-
-    def roll_out2(self, num_samples, resample_z_rate, update_posterior_rate, add_to_enc_buffer=True):
-        # start from the prior
-        self.agent.clear_z()
-        num_transitions = 0
-
-        while num_transitions < num_samples:
-            n_steps_total = 0
-            n_trajs = 0
-            paths = []
-            while n_steps_total < num_samples - num_transitions:
-
-                observations = []
-                actions = []
-                rewards = []
-                terminals = []
-                env = self.train_tasks[self.task_idx]
-                o, _ = env.reset()
-                next_o = None
-                path_length = 0
-
-                # inner most loop
-                # here we interact with the environment
-                while path_length < self.general_training_args["max_path_length"]:  # max path length=1000 >> num_samples=100
-                    a = self.agent.action(o, addNoise=True)
-                    next_o, r, d, _, _ = env.step(a)
-                    observations.append(o)
-                    rewards.append(r)
-                    terminals.append(d)
-                    actions.append(a)
-                    path_length += 1
-                    o = next_o
-                    self.episode_reward += r
-
-                    # in baseline the training happens at this point
-                    # for that we would have to add the above observations etc. to the replay buffer
-                    # we could add the transitions directly to the buffer instead of collecting paths and adding
-                    # the paths
-                    if d:
-                        break
-
-                actions = np.array(actions)
-                if len(actions.shape) == 1:
-                    actions = np.expand_dims(actions, 1)
-                observations = np.array(observations)
-                if len(observations.shape) == 1:
-                    observations = np.expand_dims(observations, 1)
-                    next_o = np.array([next_o])
-                next_observations = np.vstack(
-                    (
-                        observations[1:, :],
-                        np.expand_dims(next_o, 0)  # this expanditure might be a problem.
-                    )
-                )
-                path = dict(
-                    o=observations,  # np.array [[1,2,4,5],[1,2,4,5],[1,2,4,5],...]
-                    a=actions,
-                    r=np.array(rewards).reshape(-1, 1),  # [[1],[1.4],[34],...]
-                    o2=next_observations,
-                    d=np.array(terminals).reshape(-1, 1),  # [[false],[false],[true],...]
-                )
-
-                paths.append(path)
-                n_steps_total += len(observations)
-                n_trajs += 1
-
-                if n_trajs % resample_z_rate == 0:
-                    self.agent.sample_z()
-
-            num_transitions += n_steps_total
-            self.agent.replay_buffer.add_paths(self.task_idx, paths)
-            if add_to_enc_buffer:
-                self.agent.encoder_replay_buffer.add_paths(self.task_idx, paths)
-            if update_posterior_rate != np.inf:
-                context = self.agent.encoder_replay_buffer.sample_random_batch(self.task_idx,
-                                                                               self.training_args[
-                                                                                   "embedding_batch_size"],
-                                                                               sample_context=True,
-                                                                               use_next_obs_in_context=
-                                                                               self.agent_args[
-                                                                                   "use_next_obs_in_context"])
-                self.agent.infer_posterior(context)

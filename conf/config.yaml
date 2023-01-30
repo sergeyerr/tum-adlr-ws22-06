@@ -37,7 +37,7 @@ agent:
     experiment_name: sac2_default_env
 
 training:
-  n_train_tasks: 50
+  n_train_tasks: 100
   pass_env_parameters: False
   random: True
   episodes: 500
@@ -51,7 +51,7 @@ training:
 
 
   pearl:
-    meta_batch: 16 # number of tasks to average the gradient across 64
+    meta_batch: 32 # number of tasks to average the gradient across 64
     num_steps_prior: 600 # number of transitions to collect per task with z ~ prior
     num_steps_posterior: 0 # number of transitions to collect per task with z ~ posterior
     num_extra_rl_steps_posterior: 600 # number of additional transitions to collect per task with z ~ posterior that are only used to train the policy and NOT the encoder
@@ -106,7 +106,7 @@ env:
   random_type: 'Uniform' # 'Uniform', 'Gaussian'
   # if you set any of bounds precisely, there will be the error in validation
   gravity_lower: -11.999 # -11.999 from -12 to 0
-  gravity_upper: -0.0001 # -0.0001 from -12 to 0
+  gravity_upper: -1.0 # -0.0001 from -12 to 0
   wind_probability: 0.5
   wind_power_lower: 0 # from 0 to 20
   wind_power_upper: 10 # from 0 to 20

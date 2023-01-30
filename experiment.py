@@ -27,6 +27,24 @@ def experiment(cfg: DictConfig):
     validation_args = cfg.validation
     training_args = cfg.training
 
+    # Experiment directory storage
+    env_path = os.path.join("experiments", "LunarLanderContinuous-v2")
+    if not os.path.exists(env_path):
+        os.makedirs(env_path)
+
+    # ugly, but acceptable
+    experiment_counter = 0
+    while True:
+        try:
+            experiment_path = os.path.join(env_path, f"experiment_{experiment_counter}")
+            os.mkdir(experiment_path)
+            break
+        except FileExistsError as e:
+            experiment_counter += 1
+
+    with open(os.path.join(experiment_path, 'parameters.json'), 'w') as f:
+        OmegaConf.save(OmegaConf.to_object(cfg), f)
+
     train_env_fabric = LunarEnvRandomFabric(pass_env_params=training_args.pass_env_parameters, **env_args)
 
     if validation_args.hypercube_validation:
@@ -42,28 +60,33 @@ def experiment(cfg: DictConfig):
                                                render_mode='rgb_array')
 
     # creates list of env with different parameterizations
-    train_tasks, train_tasks_with_params = create_train_tasks(train_env_fabric, training_args.n_train_tasks)
-    eval_tasks, eval_tasks_with_params = create_train_tasks(test_env_fabric, validation_args.n_eval_tasks)
+    train_tasks, train_tasks_with_params = create_tasks(train_env_fabric, training_args.n_train_tasks)
+    eval_tasks, eval_tasks_with_params = create_tasks(test_env_fabric, validation_args.n_eval_tasks)
 
     config_dict = OmegaConf.to_object(cfg)
-    config_dict["training"]["pass_env_parameters"] = False
-    # pearl
-    config_dict["agent"]["name"] = "pearl"
-    pearl_experiment = PEARLExperiment(config_dict, train_tasks, eval_tasks)
-    pearl_experiment.run()
-    
-    # sac
-    config_dict["agent"]["name"] = "sac"
-    sac_experiment = BaselineExperiment(config_dict, train_tasks, eval_tasks)
-    sac_experiment.run()
 
     config_dict["training"]["pass_env_parameters"] = True
     # sac with environment parameters
     config_dict["agent"]["name"] = "sac"
     sac_experiment = BaselineExperiment(config_dict, train_tasks_with_params, eval_tasks_with_params)
-    sac_experiment.run()
+    sac_experiment.run(experiment_path, init_wandb=False)
 
-def create_train_tasks(env_fabric, num_tasks):
+    config_dict["training"]["pass_env_parameters"] = False
+    # sac
+    config_dict["agent"]["name"] = "sac"
+    sac_experiment = BaselineExperiment(config_dict, train_tasks, eval_tasks)
+    sac_experiment.run(experiment_path, init_wandb=False)
+
+    # pearl
+    config_dict["agent"]["name"] = "pearl"
+    pearl_experiment = PEARLExperiment(config_dict, train_tasks, eval_tasks)
+    pearl_experiment.run(experiment_path, init_wandb=False)
+    
+
+
+
+
+def create_tasks(env_fabric, num_tasks):
     envs = []
     envs_with_params = []
     for t in range(num_tasks):

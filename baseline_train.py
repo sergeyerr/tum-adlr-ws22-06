@@ -36,7 +36,7 @@ class BaselineExperiment(object):
         self.train_tasks = train_tasks
         self.eval_tasks = eval_tasks
 
-    def run(self):
+    def run(self, experiment_path, init_wandb=True):
 
         if self.general_training_args["pass_env_parameters"]:
             experiment_name = self.agent_args["experiment_name"] + "_pass_params"
@@ -51,26 +51,10 @@ class BaselineExperiment(object):
             random.seed(self.general_training_args["seed"])
 
         # Weights and biases initialization
-        # wandb.init(project="ADLR randomized envs", entity="tum-adlr-ws22-06", config=self.cfg)
-        wandb.init(mode="disabled")
-
-        # Experiment directory storage
-        env_path = os.path.join("experiments", "LunarLanderContinuous-v2")
-        if not os.path.exists(env_path):
-            os.makedirs(env_path)
-
-        # ugly, but acceptable
-        experiment_counter = 0
-        while True:
-            try:
-                experiment_path = os.path.join(env_path, f"experiment_{experiment_counter}")
-                os.mkdir(experiment_path)
-                break
-            except FileExistsError as e:
-                experiment_counter += 1
-
-        with open(os.path.join(experiment_path, 'parameters.json'), 'w') as f:
-            OmegaConf.save(self.cfg, f)
+        if init_wandb:
+            wandb.init(project="ADLR randomized envs", entity="tum-adlr-ws22-06", config=self.cfg)
+        else:
+            wandb.init(mode="disabled")
 
         agent_experiment_path = os.path.join(experiment_path, f"{experiment_name}")
         os.mkdir(agent_experiment_path)
@@ -113,7 +97,11 @@ class BaselineExperiment(object):
             for i in range(self.general_training_args["num_tasks_sample"]):
                 idx = np.random.randint(self.general_training_args["n_train_tasks"])
                 env = self.train_tasks[idx]
-                gravity, enable_wind, wind_power, turbulence_power = env.gravity, env.enable_wind, env.wind_power, env.turbulence_power
+                gravity, enable_wind, wind_power, turbulence_power = env.gravity, env.enable_wind,\
+                    env.wind_power, env.turbulence_power
+
+                print(f"Gravity: {round(gravity, 3)}\t Wind: {enable_wind}\t Wind power: {round(wind_power, 3)}\t"
+                      f" Turbulence power: {round(turbulence_power, 3)}")
 
                 total_num_steps = 0
                 while total_num_steps < self.training_args["episode_length"]:
@@ -155,19 +143,24 @@ class BaselineExperiment(object):
                 agent.update_target_network()
 
             reward_history.append(episode_reward)
-            print(f"Training episode: {episode} Episode reward: {episode_reward} Average reward: {np.mean(reward_history)}")
-            print(f"Gravity: {gravity} Wind: {enable_wind} Wind power: {wind_power} Turbulence power: {turbulence_power}")
-            wandb.log({"Training episode": episode, "Episode reward": episode_reward, "Average reward": np.mean(reward_history),
-                       "Gravity": gravity, "Wind": enable_wind, "Wind power": wind_power, "Turbulence power": turbulence_power})
+            print(f"episode actor loss is: {loss['actor_loss']} \t episode critic loss is: {loss['critic_loss']}")
+            print(f"Training episode: {episode} Episode reward: {episode_reward}"
+                  f" Average reward: {np.mean(reward_history)}")
+            print("_______________________________________________________________\n\n\n")
+
+            wandb.log({"Training episode": episode, "Episode reward": episode_reward,
+                       "Average reward": np.mean(reward_history)})
 
             if episode % self.validation_args["eval_interval"] == 0:
+                print("starting evaluation")
                 for task_id, eval_task in enumerate(self.eval_tasks):
-                    solved = validate(agent, self.validation_args, experiment_path, episode, eval_task, task_id)
+                    solved = validate(agent, self.validation_args, agent_experiment_path, episode, eval_task, task_id)
                     if solved:
-                        print(f"solved task {task_id}!!")
+                        print(f"{str(self.cfg['agent']['name'])} solved task {task_id}!!")
                         solved_tasks[task_id] = solved
 
                 if all(solved_tasks):
-                    print(f"solved all tasks (but not necessarily in a row)!!")
+                    print(f"{str(self.cfg['agent']['name'])} solved all tasks (but not necessarily in a row)!!")
                     break
+                print("evaluation over\n")
 

@@ -78,8 +78,6 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
 
     for evaluation_episode in evaluation_episodes:
 
-        rewards = 0
-
         # log step-action-reward plot for each validation episode
         if log_actions:
             steps = []
@@ -93,6 +91,8 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
             agent.clear_z()
 
         for traj in range(validation_traj_num):
+            # sum of rewards collected in the trajectory
+            rewards = 0
             # use experiment_path folder
             if record_video_on_eval and evaluation_episode == 0 and traj == 0:
                 # create tmp env with videos
