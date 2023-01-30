@@ -90,11 +90,11 @@ validation:
   eval_eps: 1 #50
   n_eval_tasks: 5 #in case of hypecube validation this will be overwritten by hypercube_points_per_axis
 
-  eval_stop_condition: 'min' # 'min', 'avg': how results from eval_eps are aggregated
+  eval_stop_condition: 'max' # 'min', 'avg', 'max': how results from eval_eps are aggregated
   eval_interval: 10
   record_video_on_eval: True
   validation_episode_length: 1000
-  validation_traj_num: 2 # must be larger than num_exp_traj_eval, else pearl cannot collect context to inform the policy
+  validation_traj_num: 3 # must be larger than num_exp_traj_eval, else pearl cannot collect context to inform the policy
   num_exp_traj_eval: 1 # must be at least 1 and smaller than validation_traj_num
   log_actions: True
 

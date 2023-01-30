@@ -164,3 +164,9 @@ class BaselineExperiment(object):
                     break
                 print("evaluation over\n")
 
+        print(f"{str(self.cfg['agent']['name'])} training is over\n following tasks have been solved\n")
+        print(f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}")
+        with open(f"{experiment_path}/solved_env.txt", "a") as f:
+            f.write(
+                f"{str(self.cfg['agent']['name'])} has solved the following tasks\n"
+                f" {['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}")

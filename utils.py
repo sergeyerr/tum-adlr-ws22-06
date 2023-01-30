@@ -161,11 +161,14 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
 
         avg_reward = round(sum(stop_reward) / len(stop_reward), 3)
         min_reward = round(min(stop_reward), 3)
+        max_reward = round(max(stop_reward), 3)
 
         if eval_stop_condition == "avg":
             stop_reward = avg_reward
         elif eval_stop_condition == "min":
             stop_reward = min_reward
+        elif eval_stop_condition == "max":
+            stop_reward = max_reward
         else:
             raise ValueError(f"Unknown eval_stop_condition {eval_stop_condition}")
 
@@ -186,13 +189,15 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
             f.write(f"{episode}, {stop_reward}\n")
         try:
             if stop_reward > eval_task.spec.reward_threshold * 1.1:  # x 1.1 because of small eval_episodes
-                print(f"Environment solved after {episode} episodes")
+                # print(f"Environment solved after {episode} episodes")
                 return True
         except Exception as e:
             if stop_reward > -120:
-                print(f"Environment solved after {episode} episodes")
+                # print(f"Environment solved after {episode} episodes")
+                print(f"stop reward is: {stop_reward}")
                 return True
-        return False
+
+    return False
 
 def get_agent_from_run_cfg(run_cfg):
     agent_args = run_cfg['agent']

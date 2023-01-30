@@ -66,7 +66,7 @@ class PEARLAgent(SACAgent):
         self.vib_criterion = torch.nn.MSELoss()
         self.l2_reg_criterion = torch.nn.MSELoss()
 
-        ### params used in optimization
+        # params used in optimization
         self.kl_lambda = kwargs["kl_lambda"]
         self.policy_mean_reg_weight = kwargs["policy_mean_reg_weight"]
         self.policy_std_reg_weight = kwargs["policy_std_reg_weight"]
@@ -88,7 +88,6 @@ class PEARLAgent(SACAgent):
         posteriors = torch.distributions.normal.Normal(self.z_means, torch.sqrt(self.z_vars))
         self.z = posteriors.rsample()
 
-    # TODO as expected this function is incorrect. The sizes dont make sense
     def update_context(self, inputs):
         ''' append single transition to the current context '''
         o, a, r, no = inputs
@@ -140,7 +139,6 @@ class PEARLAgent(SACAgent):
             self.context = data
         else:
             self.context = torch.cat([self.context, data], dim=1)
-
 
     def compute_kl_div(self):
         ''' compute KL( q(z|c) || r(z) ) '''
@@ -308,7 +306,6 @@ class PEARLAgent(SACAgent):
         self.pi.optimizer.step()
 
         return loss_results
-
 
     def save_agent(self, save_path):
         super().save_agent(save_path)

@@ -153,9 +153,6 @@ class PEARLExperiment(object):
             wandb.log({"Training episode": episode, "Episode reward": self.episode_reward,
                        "Average reward": np.mean(reward_history)})
 
-            # TODO maybe it makes sense to not evaluate tasks that have already been solved in previous episodes?
-            #  or maybe it makes sense to add to tasks to the training set which have similar environment params as
-            #  the ones that the agent struggles to solve
             if episode % self.validation_args["eval_interval"] == 0:
                 print("starting evaluation")
                 for task_id, eval_task in enumerate(self.eval_tasks):
@@ -170,12 +167,14 @@ class PEARLExperiment(object):
                     break
                 print("evaluation over\n")
 
-    # one path length is between 80 - 200 steps. This means during data collection we only collect one trajectory
-    # per iteration. This seems way too few.
-    # This function seems to be way to complicated. I think in the reference implementation this was done to ensure that
-    # complete paths are collected (important for RNN).
-    # In our case it would be better to refactor the function to have less nested loops
+        print("pearl training is over\n following tasks have been solved\n")
+        print(f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}")
+        with open(f"{experiment_path}/solved_env.txt", "a") as f:
+            f.write(
+                f"pearl has solved the following tasks\n"
+                f" {['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}")
 
+    # one path length is between 80 - 200 steps.
     def roll_out(self, num_samples, resample_z_rate, update_posterior_rate, add_to_enc_buffer=True):
 
         # start from the prior
@@ -194,6 +193,8 @@ class PEARLExperiment(object):
             o, _ = env.reset()
             next_o = None
 
+            if num_trajs % resample_z_rate == 0:
+                self.agent.sample_z()
             # inner most loop
             # here we interact with the environment
             for step in range(self.general_training_args["max_path_length"]):  # max path length=1000 >> num_samples=100
@@ -234,19 +235,16 @@ class PEARLExperiment(object):
             )
 
             paths.append(path)
+            self.agent.replay_buffer.add_paths(self.task_idx, paths)
 
-            if num_trajs % resample_z_rate == 0:
-                self.agent.sample_z()
-
-        self.agent.replay_buffer.add_paths(self.task_idx, paths)
-        if add_to_enc_buffer:
-            self.agent.encoder_replay_buffer.add_paths(self.task_idx, paths)
-        if update_posterior_rate != np.inf:
-            context = self.agent.encoder_replay_buffer.sample_random_batch(self.task_idx,
-                                                                           self.training_args[
-                                                                               "embedding_batch_size"],
-                                                                           sample_context=True,
-                                                                           use_next_obs_in_context=
-                                                                           self.agent_args[
-                                                                               "use_next_obs_in_context"])
-            self.agent.infer_posterior(context)
+            if add_to_enc_buffer:
+                self.agent.encoder_replay_buffer.add_paths(self.task_idx, paths)
+            if update_posterior_rate != np.inf:
+                context = self.agent.encoder_replay_buffer.sample_random_batch(self.task_idx,
+                                                                               self.training_args[
+                                                                                   "embedding_batch_size"],
+                                                                               sample_context=True,
+                                                                               use_next_obs_in_context=
+                                                                               self.agent_args[
+                                                                                   "use_next_obs_in_context"])
+                self.agent.infer_posterior(context)
