@@ -48,9 +48,10 @@ def experiment(cfg: DictConfig):
 
     config_dict = OmegaConf.to_object(cfg)
     # pearl
-    #config_dict["agent"]["name"] = "pearl"
-    #pearl_experiment = PEARLExperiment(config_dict, train_tasks, eval_tasks)
-    #pearl_experiment.run()
+    config_dict["agent"]["name"] = "pearl"
+    pearl_experiment = PEARLExperiment(config_dict, train_tasks, eval_tasks)
+    pearl_experiment.run()
+    
     # sac
     config_dict["agent"]["name"] = "sac"
     sac_experiment = BaselineExperiment(config_dict, train_tasks, eval_tasks)
