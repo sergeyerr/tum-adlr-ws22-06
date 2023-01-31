@@ -65,6 +65,12 @@ def experiment(cfg: DictConfig):
 
     config_dict = OmegaConf.to_object(cfg)
 
+    config_dict["training"]["pass_env_parameters"] = False
+    # pearl
+    config_dict["agent"]["name"] = "pearl"
+    pearl_experiment = PEARLExperiment(config_dict, train_tasks, eval_tasks)
+    pearl_experiment.run(experiment_path, init_wandb=False)
+
     config_dict["training"]["pass_env_parameters"] = True
     # sac with environment parameters
     config_dict["agent"]["name"] = "sac"
@@ -77,10 +83,7 @@ def experiment(cfg: DictConfig):
     sac_experiment = BaselineExperiment(config_dict, train_tasks, eval_tasks)
     sac_experiment.run(experiment_path, init_wandb=False)
 
-    # pearl
-    config_dict["agent"]["name"] = "pearl"
-    pearl_experiment = PEARLExperiment(config_dict, train_tasks, eval_tasks)
-    pearl_experiment.run(experiment_path, init_wandb=False)
+
     
 
 

@@ -93,9 +93,6 @@ class PEARLExperiment(object):
         # meta-training loop
         # at each iteration, we first collect data from tasks, perform meta-updates, then try to evaluate
         for episode in range(self.general_training_args["episodes"]):
-            self.episode_reward = 0.0
-            actor_loss = 0.0
-            critic_loss = 0.0
 
             if episode == 0:
                 print('collecting initial pool of data for train and eval')
@@ -103,7 +100,11 @@ class PEARLExperiment(object):
                     env.reset()
                     self.task_idx = idx
                     self.roll_out(self.general_training_args["num_initial_steps"], 1, np.inf)
+
             # Sample data from train tasks.
+            actor_loss = 0.0
+            critic_loss = 0.0
+            self.episode_reward = 0.0
             print('Sample data from train tasks')
             for i in range(self.general_training_args["num_tasks_sample"]):
                 idx = np.random.randint(self.general_training_args["n_train_tasks"])
