@@ -93,6 +93,7 @@ class BaselineExperiment(object):
             episode_reward = 0.0
             actor_loss = 0.0
             critic_loss = 0.0
+            initial_steps = 0
 
             for i in range(self.general_training_args["num_tasks_sample"]):
                 idx = np.random.randint(self.general_training_args["n_train_tasks"])
@@ -103,15 +104,17 @@ class BaselineExperiment(object):
                 print(f"Gravity: {round(gravity, 3)}\t Wind: {enable_wind}\t Wind power: {round(wind_power, 3)}\t"
                       f" Turbulence power: {round(turbulence_power, 3)}")
 
-                total_num_steps = 0
-                while total_num_steps < self.training_args["episode_length"]:
+                total_steps_per_task = 0
+                while total_steps_per_task < self.training_args["episode_length"]:
                     obs, info = env.reset()
                     # Generate rollout
                     for step in range(self.general_training_args["max_path_length"]):
 
                         # Get actions
+                        # it does not make sense to re-collect the initial steps for every task, because in sac
+                        # we only have one replay buffer for all tasks!
                         with T.no_grad():
-                            if episode == 0 and total_num_steps < self.general_training_args["num_initial_steps"]:
+                            if episode == 0 and initial_steps < self.general_training_args["num_initial_steps"]:
                                 action = env.action_space.sample()
                             else:
                                 action = agent.action(obs, addNoise=True, noise=noise)
@@ -127,7 +130,8 @@ class BaselineExperiment(object):
 
                         # Update obs
                         obs = new_obs
-                        total_num_steps += 1
+                        total_steps_per_task += 1
+                        initial_steps += 1
                         # End episode if done
                         if done:
                             break
