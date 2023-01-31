@@ -60,43 +60,55 @@ def experiment(cfg: DictConfig):
                                                render_mode='rgb_array')
 
     # creates list of env with different parameterizations
-    train_tasks, train_tasks_with_params = create_tasks(train_env_fabric, training_args.n_train_tasks)
-    eval_tasks, eval_tasks_with_params = create_tasks(test_env_fabric, validation_args.n_eval_tasks)
+    train_tasks, train_tasks_with_params, train_tasks_ood = create_tasks(train_env_fabric, training_args.n_train_tasks)
+    eval_tasks, eval_tasks_with_params, eval_task_ood = create_tasks(test_env_fabric, validation_args.n_eval_tasks)
 
     config_dict = OmegaConf.to_object(cfg)
 
-    config_dict["training"]["pass_env_parameters"] = False
     # pearl
+    config_dict["training"]["pass_env_parameters"] = False
     config_dict["agent"]["name"] = "pearl"
     pearl_experiment = PEARLExperiment(config_dict, train_tasks, eval_tasks)
     pearl_experiment.run(experiment_path, init_wandb=False)
 
-    config_dict["training"]["pass_env_parameters"] = True
     # sac with environment parameters
+    config_dict["training"]["pass_env_parameters"] = True
     config_dict["agent"]["name"] = "sac"
     sac_experiment = BaselineExperiment(config_dict, train_tasks_with_params, eval_tasks_with_params)
     sac_experiment.run(experiment_path, init_wandb=False)
 
-    config_dict["training"]["pass_env_parameters"] = False
     # sac
+    config_dict["training"]["pass_env_parameters"] = False
     config_dict["agent"]["name"] = "sac"
     sac_experiment = BaselineExperiment(config_dict, train_tasks, eval_tasks)
     sac_experiment.run(experiment_path, init_wandb=False)
 
+    # Out of distribution testing:
+    # the training tasks will be in a different part of the environment parameter space compared to the eval tasks
 
-    
+    # pearl ood
+    config_dict["training"]["pass_env_parameters"] = False
+    config_dict["agent"]["name"] = "pearl"
+    pearl_experiment = PEARLExperiment(config_dict, train_tasks_ood, eval_task_ood)
+    pearl_experiment.run(experiment_path, init_wandb=False)
 
-
+    # sac ood
+    config_dict["training"]["pass_env_parameters"] = False
+    config_dict["agent"]["name"] = "sac"
+    sac_experiment = BaselineExperiment(config_dict, train_tasks_ood, eval_task_ood)
+    sac_experiment.run(experiment_path, init_wandb=False)
 
 
 def create_tasks(env_fabric, num_tasks):
     envs = []
     envs_with_params = []
+    ood_envs = []
     for t in range(num_tasks):
-        env, env_with_params = env_fabric.generate_env()
+        env, env_with_params, ood_env = env_fabric.generate_env()
         envs.append(env)
+        ood_envs.append(ood_env)
         envs_with_params.append(env_with_params)
-    return envs, envs_with_params
+    return envs, envs_with_params, ood_envs
 
 if __name__=='__main__':
     experiment()

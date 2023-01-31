@@ -119,20 +119,22 @@ class PEARLExperiment(object):
                       f" Turbulence power: {round(turbulence_power,3)}")
 
                 # TODO understand why we delete the replay buffer here although we filled it in loop before
-                self.agent.encoder_replay_buffer.clear_buffer(idx)
 
                 # collect some trajectories with z ~ prior
+                self.agent.encoder_replay_buffer.clear_buffer(idx)
                 if self.training_args["num_steps_prior"] > 0:
                     self.roll_out(self.training_args["num_steps_prior"], 1, np.inf)
-                # collect some trajectories with z ~ posterior
-                if self.training_args["num_steps_posterior"] > 0:
-                    self.roll_out(self.training_args["num_steps_posterior"], 1,
-                                      self.training_args["update_post_train"])
                 # even if encoder is trained only on samples from the prior,
                 # the policy needs to learn to handle z ~ posterior
                 if self.training_args["num_extra_rl_steps_posterior"] > 0:
                     self.roll_out(self.training_args["num_extra_rl_steps_posterior"],
-                                      1, self.training_args["update_post_train"], add_to_enc_buffer=False)
+                                  1, self.training_args["update_post_train"], add_to_enc_buffer=False)
+                # collect some trajectories with z ~ posterior
+                self.agent.encoder_replay_buffer.clear_buffer(idx)
+                if self.training_args["num_steps_posterior"] > 0:
+                    self.roll_out(self.training_args["num_steps_posterior"], 1,
+                                      self.training_args["update_post_train"])
+
 
             reward_history.append(self.episode_reward)
             # Sample train tasks and compute gradient updates on parameters.
@@ -169,11 +171,11 @@ class PEARLExperiment(object):
                 print("evaluation over\n")
 
         print("pearl training is over\n following tasks have been solved\n")
-        print(f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}")
+        print(f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}\n\n")
         with open(f"{experiment_path}/solved_env.txt", "a") as f:
             f.write(
                 f"pearl has solved the following tasks\n"
-                f" {['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}")
+                f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}\n")
 
     # one path length is between 80 - 200 steps.
     def roll_out(self, num_samples, resample_z_rate, update_posterior_rate, add_to_enc_buffer=True):

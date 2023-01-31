@@ -66,7 +66,6 @@ class BaselineExperiment(object):
         env_info = {"input_dims": int(np.prod(self.train_tasks[0].observation_space.shape)), "n_actions": n_actions,
                     "max_action": self.train_tasks[0].action_space.high}
 
-        # TODO: Modify this to call any other algorithm
         if str(self.cfg["agent"]["name"]) == "ddpg":
             algorithm = DDPGAgent
         elif str(self.cfg["agent"]["name"]) == "sac":
@@ -169,8 +168,8 @@ class BaselineExperiment(object):
                 print("evaluation over\n")
 
         print(f"{str(self.cfg['agent']['name'])} training is over\n following tasks have been solved\n")
-        print(f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}")
+        print(f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}\n\n")
         with open(f"{experiment_path}/solved_env.txt", "a") as f:
             f.write(
                 f"{str(self.cfg['agent']['name'])} has solved the following tasks\n"
-                f" {['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}")
+                f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}\n")

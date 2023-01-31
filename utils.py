@@ -94,7 +94,11 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
             # sum of rewards collected in the trajectory
             rewards = 0
             # use experiment_path folder
-            if record_video_on_eval and evaluation_episode == 0 and traj == 0:
+            # TODO instead of using traj=0 record traj=validation_traj_num. This makes sense, because pearl is
+            #  uninformed in the first trajectory, but will have context starting from the 2nd trajectory.
+            #  When using the 'min' stop condition pearl will also not perform as good, because the first uninformed
+            #  trajectory will not have as high rewards as the upcoming informed trajectories
+            if record_video_on_eval and evaluation_episode == 0 and traj == validation_traj_num-1:
                 # create tmp env with videos
                 video_path = os.path.join(experiment_path, "videos", str(episode), str(task_id))
                 eval_task = RecordVideo(in_eval_task, video_path)
@@ -181,10 +185,12 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
             art.add_file(os.path.join(save_path, f))
         wandb.log_artifact(art)
 
-        print(f"Episode: {episode} | Average evaluation reward: {avg_reward} | Min evaluation reward: {min_reward} | Agent saved at {save_path}")
+        print(f"Episode: {episode} | Average evaluation reward: {avg_reward} | Min evaluation reward: {min_reward}"
+              f" | Max evaluation reward: {max_reward}")
 
         wandb.log({"Validation after episode": episode,  "Average evaluation reward": avg_reward,
-                   "Min evaluation reward": min_reward})
+                   "Min evaluation reward": min_reward, "Max evaluation reward": max_reward})
+
         with open(f"{experiment_path}/evaluation_rewards.csv", "a") as f:
             f.write(f"{episode}, {stop_reward}\n")
         try:
@@ -194,7 +200,7 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
         except Exception as e:
             if stop_reward > -120:
                 # print(f"Environment solved after {episode} episodes")
-                print(f"stop reward is: {stop_reward}")
+                print(f"Exception handled. Stop reward is: {stop_reward}")
                 return True
 
     return False
