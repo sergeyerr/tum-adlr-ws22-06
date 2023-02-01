@@ -177,6 +177,9 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
                         "Video": wandb.Video(os.path.join(video_path, "rl-video-episode-0.mp4"), fps=4, format="gif",
                                              caption=f"gravity: {gravity}, wind: {enable_wind}, wind power: {wind_power}, turbulence power: {turbulence_power}, episode: {episode}")})
 
+        if pearl:
+            stop_reward = stop_reward[1:]  # this is done so that we do not count the exploration trajectory
+
         avg_reward = round(sum(stop_reward) / len(stop_reward), 3)
         min_reward = round(min(stop_reward), 3)
         max_reward = round(max(stop_reward), 3)

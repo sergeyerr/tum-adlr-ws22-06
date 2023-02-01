@@ -219,7 +219,7 @@ class SACActorNetwork(nn.Module):
         log_probs -= (2*(np.log(2) - action - F.softplus(-2*action))).sum(axis=-1)
         tanh_action = T.tanh(action)*T.tensor(self.max_action).to(self.device)
 
-        if return_all_params:
+        if return_all_outputs:
             # this is from the pearl implementation
             log_probs = probabilities.log_prob(action)
             log_probs -= T.log(1 - tanh_action*tanh_action + self.reparam_noise)

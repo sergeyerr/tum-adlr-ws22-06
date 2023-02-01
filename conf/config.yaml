@@ -53,7 +53,7 @@ training:
   pearl:
     meta_batch: 32 # number of tasks to average the gradient across 64
     num_steps_prior: 600 # number of transitions to collect per task with z ~ prior
-    num_steps_posterior: 600 # number of transitions to collect per task with z ~ posterior
+    num_steps_posterior: 0 # number of transitions to collect per task with z ~ posterior
     num_extra_rl_steps_posterior: 600 # number of additional transitions to collect per task with z ~ posterior that are only used to train the policy and NOT the encoder
     # num_steps_per_eval: 600  # nuumber of transitions to eval on
     batch_size: 256 # number of transitions in the RL batch 1024
@@ -90,7 +90,7 @@ validation:
   eval_eps: 1 #50
   n_eval_tasks: 5 #in case of hypecube validation this will be overwritten by hypercube_points_per_axis
 
-  eval_stop_condition: 'avg' # 'min', 'avg', 'max': how results from eval_eps are aggregated
+  eval_stop_condition: 'min' # 'min', 'avg', 'max': how results from eval_eps are aggregated
   eval_interval: 10
   record_video_on_eval: True
   validation_episode_length: 1000

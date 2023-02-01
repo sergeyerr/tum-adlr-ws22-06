@@ -132,7 +132,7 @@ class PEARLExperiment(object):
                     self.roll_out(self.training_args["num_extra_rl_steps_posterior"],
                                   1, self.training_args["update_post_train"], add_to_enc_buffer=False)
                 # collect some trajectories with z ~ posterior
-                self.agent.encoder_replay_buffer.clear_buffer(idx) # do we need to clear here??
+                # self.agent.encoder_replay_buffer.clear_buffer(idx) # do we need to clear here??
                 if self.training_args["num_steps_posterior"] > 0:
                     self.roll_out(self.training_args["num_steps_posterior"], 1,
                                       self.training_args["update_post_train"])
