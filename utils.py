@@ -94,10 +94,24 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
             # sum of rewards collected in the trajectory
             rewards = 0
             # use experiment_path folder
-            # TODO instead of using traj=0 record traj=validation_traj_num. This makes sense, because pearl is
+
+            # TODO think about how the validation stop condition should be calculated:
+            # instead of using traj=0 record traj=validation_traj_num-1. This makes sense, because pearl is
             #  uninformed in the first trajectory, but will have context starting from the 2nd trajectory.
             #  When using the 'min' stop condition pearl will also not perform as good, because the first uninformed
             #  trajectory will not have as high rewards as the upcoming informed trajectories
+
+            # how to calculate the stop condition is a critical decision. If we decide to take min, then the uninformed
+            # pearl trajectory will be the one deciding whether pearl solved the eval task. The uninformed trajectory,
+            # however, is not representative of pearls performance.
+            # if we take max, it might also not be representative. If we take average than three eval traj is too few,
+            # as the first uninformed trajectory would need to have a reward way above 150 points in order to make for
+            # the average reward to be larger than 240. This is quite unrealistic.
+            # I think the best way would be to take the min between the two informed trajectories (or the average)
+
+            # another idea would be to actually store the context of the eval tasks so that next time we do not need
+            # an exploration trajectory
+
             if record_video_on_eval and evaluation_episode == 0 and traj == validation_traj_num-1:
                 # create tmp env with videos
                 video_path = os.path.join(experiment_path, "videos", str(episode), str(task_id))

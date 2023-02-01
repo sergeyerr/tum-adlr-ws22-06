@@ -193,6 +193,10 @@ class PEARLAgent(SACAgent):
     # performs one optimization step of agent
     def optimize(self, task_indices):
 
+        # TODO compare this optimization step by step to the optimization done in SAC
+        # TODO implement another optimization that is like in SAC2
+        # TODO how does it work that the context encoder takes variable length context input
+
         # sample context batch
         context = self.encoder_replay_buffer.sample_random_batch(task_indices, batch_size=self.embedding_batch_size,
                                                                  sample_context=True,
@@ -233,22 +237,21 @@ class PEARLAgent(SACAgent):
         # run policy, get log probs and new actions
         in_ = torch.cat([obs, task_z.detach()], dim=1)  # meta_batch*batch_size, obs_dim+latent_dim
 
-        policy_outputs = self.pi.sample_normal(in_, reparameterize=True, return_log_prob=True)
+        policy_outputs = self.pi.sample_normal(in_, reparameterize=True, return_all_outputs=True)
 
         new_actions, policy_mean, policy_log_std, log_pi = policy_outputs[:4]
         # tanh_action, mean, T.log(sigma), log_probs, None, sigma, None, action
 
         # Q and V networks
         # encoder will only get gradients from Q nets
-        # TODO check if concatentation in dim=1 is correct. Also check the SACCriticNetwork
-        #  (in reference the cat with dim 1)
-        # TODO also check if order ob inputs matter. In reference implementation they have o, a, z
+        # TODO in SAC we use new_actions here as input!
         q1_pred = self.q_1(torch.cat([obs, task_z], dim=1), actions)
         q2_pred = self.q_2(torch.cat([obs, task_z], dim=1), actions)
-        v_pred = self.value(torch.cat([obs, task_z.detach()], dim=1))
+        # TODO use in_ here instead?
+        v_pred = self.value(torch.cat([obs, task_z.detach()], dim=1))  # like in sac
         # get targets for use in V and Q updates
         with torch.no_grad():
-            target_v_values = self.target_value(torch.cat([next_obs, task_z], dim=1))
+            target_v_values = self.target_value(torch.cat([next_obs, task_z], dim=1))  # like in sac
 
         # KL constraint on z if probabilistic
         self.context_encoder.optimizer.zero_grad()
@@ -261,11 +264,11 @@ class PEARLAgent(SACAgent):
         self.q_2.optimizer.zero_grad()
         rewards_flat = rewards.view(self.batch_size * num_tasks, -1)
         # scale rewards for Bellman update
-        # TODO check self.scale parameter
         rewards_flat = rewards_flat * self.scale
         terms_flat = terms.view(self.batch_size * num_tasks, -1)
-        q_target = rewards_flat + (1. - terms_flat) * self.gamma * target_v_values
-        q_loss = torch.mean((q1_pred - q_target) ** 2) + torch.mean((q2_pred - q_target) ** 2)
+        q_target = rewards_flat + (1. - terms_flat) * self.gamma * target_v_values # like in sac
+        # q1_pred, and q2_pred calculated like in sac
+        q_loss = torch.mean((q1_pred - q_target) ** 2) + torch.mean((q2_pred - q_target) ** 2)  # in sac we do 0.5 infront
         loss_results["critic_loss"] = q_loss.data
         q_loss.backward()
         self.q_1.optimizer.step()
@@ -273,8 +276,8 @@ class PEARLAgent(SACAgent):
         self.context_encoder.optimizer.step()
 
         # compute min Q on the new actions
-        q1 = self.q_1(torch.cat([obs, task_z.detach()], dim=1), new_actions)
-        q2 = self.q_2(torch.cat([obs, task_z.detach()], dim=1), new_actions)
+        q1 = self.q_1(torch.cat([obs, task_z.detach()], dim=1), new_actions)  # like in sac
+        q2 = self.q_2(torch.cat([obs, task_z.detach()], dim=1), new_actions)  # like in sac
         min_q_new_actions = torch.min(q1, q2)
 
         # vf update

@@ -4,7 +4,7 @@ import numpy as np
 from gymnasium.spaces import Box
 
 class ValidationHypercube:
-    def __init__(self, points_per_axis=3, check_no_wind=True,  **env_params):
+    def __init__(self, points_per_axis=3, check_no_wind=False,  **env_params):
         '''
         env_params - config dict, with bounds for gravity, wind and turbulence;
         points_per_axis - number of points per dimenstion of the hypercube
@@ -26,16 +26,14 @@ class ValidationHypercube:
         
     
     def get_points(self):
-        no_wind_ponts = []
-        wind_points = []
+
         gravity_linspace = np.linspace(self.gravity_lower, self.gravity_upper, self.points_per_axis) 
         wind_linspace= np.linspace(self.wind_power_lower, self.wind_power_upper, self.points_per_axis)
         turbulence_linspace = np.linspace(self.turbulence_power_lower, self.turbulence_power_upper, self.points_per_axis)   
         no_wind_points = [(g, 0, 0, 0) for g in gravity_linspace]
         wind_points = [(g, 1, w, t) for g in gravity_linspace for w in wind_linspace for t in turbulence_linspace]
 
-        ood_no_wind_ponts = []
-        ood_wind_points = []
+
         ood_gravity_linspace = np.linspace(self.eval_ood_gravity_lower, self.eval_ood_gravity_upper,
                                            self.points_per_axis)
         ood_wind_linspace = np.linspace(self.eval_ood_wind_power_lower, self.eval_ood_wind_power_upper,
@@ -46,7 +44,7 @@ class ValidationHypercube:
         ood_wind_points = [(g, 1, w, t) for g in ood_gravity_linspace for w in ood_wind_linspace for t in ood_turbulence_linspace]
 
         if self.check_no_wind:
-            return no_wind_ponts + wind_points, ood_no_wind_ponts + ood_wind_points
+            return no_wind_points + wind_points, ood_no_wind_points + ood_wind_points
         return wind_points, ood_wind_points
 
 
@@ -155,7 +153,7 @@ class LunarEnvRandomFabric(LunarEnvFixedFabric):
         
     def generate_env(self):
         if self.random_type == "Uniform":
-            gravity, enable_wind, wind_power, turbulence_power, ood_gravity, ood_wind, ood_wind_power,\
+            gravity, enable_wind, wind_power, turbulence_power, ood_gravity, ood_enable_wind, ood_wind_power,\
                 ood_turbulence_power = self.get_uniform_parameters()
         else:
             raise NotImplementedError("Only uniform randomization is supported")
@@ -205,16 +203,16 @@ class LunarEnvRandomFabric(LunarEnvFixedFabric):
 class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
     '''Fabric for generating environments with parameters from hypercube grid 
     '''
-    def __init__(self, pass_env_params, render_mode=None, points_per_axis = 3, check_without_wind = True, **env_params):
+    def __init__(self, pass_env_params, render_mode=None, points_per_axis=3, check_without_wind=False, **env_params):
         super().__init__(pass_env_params, render_mode, **env_params)
-        self.test_parameters = ValidationHypercube(points_per_axis=points_per_axis, check_no_wind=check_without_wind, **env_params).get_points()
+        self.test_parameters, self.test_parameters_ood = ValidationHypercube(points_per_axis=points_per_axis, check_no_wind=check_without_wind, **env_params).get_points()
         self.iter = 0
     
     
     def generate_env(self):
         
-        gravity, enable_wind, wind_power, turbulence_power, ood_gravity, ood_enable_wind, ood_wind_power,\
-            ood_turbulence_power = self.test_parameters[self.iter]
+        gravity, enable_wind, wind_power, turbulence_power = self.test_parameters[self.iter]
+        ood_gravity, ood_enable_wind, ood_wind_power, ood_turbulence_power = self.test_parameters_ood[self.iter]
         self.iter += 1
         self.iter = self.iter % len(self.test_parameters)
         env = StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
@@ -246,7 +244,7 @@ class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
         
         
     def number_of_test_points(self):
-        return len(self.test_parameters) / 2
+        return len(self.test_parameters)
         
 
     

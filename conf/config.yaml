@@ -2,7 +2,7 @@ agent:
   name: pearl # this is only used to determine which of the sub groups to use
 
   pearl:
-    experiment_name: pearl_default_env
+    experiment_name: pearl
     tau: 0.005 # for SAC target network update
     pi_lr: 3E-4
     q_lr: 3E-4
@@ -25,7 +25,7 @@ agent:
     gamma: 0.99
     tau: 0.005
     reward_scale: 2
-    experiment_name: sac_default_env
+    experiment_name: sac
 
   sac2:
     pi_lr: 0.0001
@@ -34,7 +34,7 @@ agent:
     tau: 0.005
     reward_scale: 0.2
     alpha: 1
-    experiment_name: sac2_default_env
+    experiment_name: sac2
 
 training:
   n_train_tasks: 100
@@ -97,7 +97,6 @@ validation:
   validation_traj_num: 3 # must be larger than num_exp_traj_eval, else pearl cannot collect context to inform the policy
   num_exp_traj_eval: 1 # must be at least 1 and smaller than validation_traj_num
   log_actions: True
-
 
 env:
   seed: 0

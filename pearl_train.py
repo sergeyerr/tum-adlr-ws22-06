@@ -50,13 +50,12 @@ class PEARLExperiment(object):
         self.episode_reward = 0.0
         self.task_idx = 0
 
-    def run(self, experiment_path, init_wandb):
+    def run(self, experiment_path, init_wandb=True, ood=False):
 
-        if self.general_training_args["pass_env_parameters"]:
-            print("It is not possible to run PEARL with pass_env_parameters set to True\n returning from experiment")
-            return
-        else:
-            experiment_name = self.agent_args["experiment_name"]
+        experiment_name = self.agent_args["experiment_name"]
+
+        if ood:
+            experiment_name = experiment_name + "_ood"
 
         if not self.general_training_args["random"]:
             T.manual_seed(self.general_training_args["seed"])
@@ -118,7 +117,10 @@ class PEARLExperiment(object):
                 print(f"Gravity: {round(gravity,3)}\t Wind: {enable_wind}\t Wind power: {round(wind_power,3)}\t"
                       f" Turbulence power: {round(turbulence_power,3)}")
 
-                # TODO understand why we delete the replay buffer here although we filled it in loop before
+                # TODO understand what impact it has how we gather data. We could gather only trajectories with
+                #  z~prior or z~posterior or z~posterior while not adding new data to the encoder or different com-
+                #  binations. What impact does it have to clear the encoder or not clearing it buffer? This could
+                #  be an experiment of its own, just to better understand how pearl behaves.
 
                 # collect some trajectories with z ~ prior
                 self.agent.encoder_replay_buffer.clear_buffer(idx)
@@ -130,11 +132,10 @@ class PEARLExperiment(object):
                     self.roll_out(self.training_args["num_extra_rl_steps_posterior"],
                                   1, self.training_args["update_post_train"], add_to_enc_buffer=False)
                 # collect some trajectories with z ~ posterior
-                self.agent.encoder_replay_buffer.clear_buffer(idx)
+                self.agent.encoder_replay_buffer.clear_buffer(idx) # do we need to clear here??
                 if self.training_args["num_steps_posterior"] > 0:
                     self.roll_out(self.training_args["num_steps_posterior"], 1,
                                       self.training_args["update_post_train"])
-
 
             reward_history.append(self.episode_reward)
             # Sample train tasks and compute gradient updates on parameters.
@@ -170,11 +171,12 @@ class PEARLExperiment(object):
                     break
                 print("evaluation over\n")
 
-        print("pearl training is over\n following tasks have been solved\n")
+        # TODO note down the episodes in which the tasks were solved, so we can check the videos afterwards
+        print(f"pearl{'_ood' if ood else ''} training is over\n following tasks have been solved\n")
         print(f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}\n\n")
         with open(f"{experiment_path}/solved_env.txt", "a") as f:
             f.write(
-                f"pearl has solved the following tasks\n"
+                f"pearl{'_ood' if ood else ''} has solved the following tasks\n"
                 f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}\n")
 
     # one path length is between 80 - 200 steps.

@@ -36,12 +36,15 @@ class BaselineExperiment(object):
         self.train_tasks = train_tasks
         self.eval_tasks = eval_tasks
 
-    def run(self, experiment_path, init_wandb=True):
+    def run(self, experiment_path, init_wandb=True, ood=False, pass_params=False):
 
-        if self.general_training_args["pass_env_parameters"]:
-            experiment_name = self.agent_args["experiment_name"] + "_pass_params"
-        else:
-            experiment_name = self.agent_args["experiment_name"]
+        experiment_name = self.agent_args["experiment_name"]
+
+        if ood:
+            experiment_name = experiment_name + "_ood"
+
+        if pass_params:
+            experiment_name = experiment_name + "_pass_params"
 
         if not self.general_training_args["random"]:
             T.manual_seed(self.general_training_args["seed"])
@@ -167,9 +170,10 @@ class BaselineExperiment(object):
                     break
                 print("evaluation over\n")
 
-        print(f"{str(self.cfg['agent']['name'])} training is over\n following tasks have been solved\n")
+        # TODO note down the episodes in which the tasks were solved, so we can check the videos afterwards
+        print(f"{str(self.cfg['agent']['name']) + '_ood' if ood else ''} training is over\n following tasks have been solved\n")
         print(f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}\n\n")
         with open(f"{experiment_path}/solved_env.txt", "a") as f:
             f.write(
-                f"{str(self.cfg['agent']['name'])} has solved the following tasks\n"
+                f"{str(self.cfg['agent']['name']) + '_ood' if ood else ''} has solved the following tasks\n"
                 f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}\n")
