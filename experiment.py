@@ -115,7 +115,7 @@ def experiment(cfg: DictConfig):
     sac_experiment = BaselineExperiment(config_dict, train_tasks, eval_tasks)
     sac_experiment.run(experiment_path, init_wandb=False, ood=False, pass_params=False)
 
-# TODO have a third set of tasks for final validation.
+    # TODO have a third set of tasks for final validation.
 
 
 def create_tasks(env_fabric, num_tasks):

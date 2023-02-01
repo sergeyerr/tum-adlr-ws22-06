@@ -171,9 +171,11 @@ class BaselineExperiment(object):
                 print("evaluation over\n")
 
         # TODO note down the episodes in which the tasks were solved, so we can check the videos afterwards
-        print(f"{str(self.cfg['agent']['name']) + '_ood' if ood else ''} training is over\n following tasks have been solved\n")
+        print(f"{str(self.cfg['agent']['name']) + '_ood' if ood else ''}{'_wp' if pass_params else ''}"
+              f" training is over\n following tasks have been solved\n")
         print(f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}\n\n")
         with open(f"{experiment_path}/solved_env.txt", "a") as f:
             f.write(
-                f"{str(self.cfg['agent']['name']) + '_ood' if ood else ''} has solved the following tasks\n"
+                f"{str(self.cfg['agent']['name']) + '_ood' if ood else ''}{'_wp' if pass_params else ''}"
+                f" has solved the following tasks\n"
                 f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}\n")
