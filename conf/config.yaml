@@ -48,6 +48,7 @@ training:
   noise: 'Ornstein' #'Zero','Gaussian', 'Ornstein'
   noise_param: 0.2
   max_path_length: 1000 #200 max path length for this environment
+  abort_training_after: 100 # if average reward does not increase for abort_training_after many episodes, abort training
 
 
   pearl:

@@ -41,6 +41,13 @@ from baseline_train import BaselineExperiment
 
 # TODO use different seed for deterministic reset of the environment.
 
+# TODO understand what impact it has how we gather data. We could gather only trajectories with
+#  z~prior or z~posterior or z~posterior while not adding new data to the encoder or different com-
+#  binations. What impact does it have to clear the encoder or not clearing it buffer? This could
+#  be an experiment of its own, just to better understand how pearl behaves.
+
+# TODO check if the exploration trajectory in the evaluation of pearl has lower reward than other two trajectories
+
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def experiment(cfg: DictConfig):
     env_args = cfg.env

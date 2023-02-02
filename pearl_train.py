@@ -18,61 +18,43 @@ import wandb
 from agents import PEARLAgent
 
 from utils import print_run_info, validate
+from baseline_train import BaselineExperiment
 
-class PEARLExperiment(object):
 
-    def __init__(self, cfg, train_tasks, eval_tasks):
-        self.cfg = cfg
-        self.general_training_args = cfg["training"]
+class PEARLExperiment(BaselineExperiment):
+
+    def __init__(self, cfg, train_tasks, eval_tasks, experiment_path):
+        super().__init__(cfg, train_tasks, eval_tasks, experiment_path)
         self.training_args = cfg["training"]["pearl"]
-        # print(f"training args {json.dumps(self.training_args, indent=4)}")
         self.agent_args = cfg["agent"]["pearl"]
-        # print(f"agent args{json.dumps(self.agent_args, indent=4)}")
-        self.env_args = cfg["env"]
-        # print(f"env args{json.dumps(self.env_args, indent=4)}")
-        self.validation_args = cfg["validation"]
-        # print(f"validation args{json.dumps(self.validation_args, indent=4)}")
-
-        # creates list of env with different parameterizations
-        self.train_tasks = train_tasks
-        self.eval_tasks = eval_tasks
-
-        self.n_actions = int(np.prod(self.train_tasks[0].action_space.shape)) \
-            if type(self.train_tasks[0].action_space) == gym.spaces.box.Box else self.train_tasks[0].action_space.n
-
-        env_info = {"obs_dim": int(np.prod(self.train_tasks[0].observation_space.shape)), "n_actions": self.n_actions,
-                    "max_action": self.train_tasks[0].action_space.high}
+        self.experiment_name = self.agent_args["experiment_name"]
+        self.agent_name = "pearl"
 
         # this is critical so that the q and v functions have the right input size
-        env_info["input_dims"] = env_info["obs_dim"] + self.agent_args["latent_size"]
-        self.agent = PEARLAgent(**self.agent_args, **self.training_args, **self.general_training_args, **env_info)
+        self.env_info["input_dims"] += self.agent_args["latent_size"]
 
         self.episode_reward = 0.0
         self.task_idx = 0
 
-    def run(self, experiment_path, init_wandb=True, ood=False):
 
-        experiment_name = self.agent_args["experiment_name"]
+    def run(self, **kwargs):
 
-        if ood:
-            experiment_name = experiment_name + "_ood"
+        self.agent = PEARLAgent(**self.agent_args, **self.training_args, **self.general_training_args, **self.env_info)
 
-        if not self.general_training_args["random"]:
-            T.manual_seed(self.general_training_args["seed"])
-            T.backends.cudnn.deterministic = True
-            T.backends.cudnn.benchmark = False
-            np.random.seed(self.general_training_args["seed"])
-            random.seed(self.general_training_args["seed"])
+        self.ood = kwargs["ood"]
+        init_wandb = kwargs["init_wandb"]
+
+        if self.ood:
+            self.experiment_name = self.experiment_name + "_ood"
+
+        # create folder based on experiment_name
+        self.make_experiment_directory()
 
         # Weights and biases initialization
         if init_wandb:
             wandb.init(project="ADLR randomized envs with Meta RL", entity="tum-adlr-ws22-06", config=self.cfg)
         else:
             wandb.init(mode="disabled")
-
-        agent_experiment_path = os.path.join(experiment_path, f"{experiment_name}")
-        os.mkdir(agent_experiment_path)
-        os.mkdir(os.path.join(agent_experiment_path, "saves"))
 
         if self.validation_args["log_model_wandb"]:
             # assumes that the model has only one actor, we may also log different models differently
@@ -86,9 +68,6 @@ class PEARLExperiment(object):
         print_run_info(self.train_tasks[0], self.agent, self.agent_args, self.training_args, self.env_args,
                        self.validation_args, noise)
 
-        reward_history = deque(maxlen=100)
-        solved_tasks = [None] * self.validation_args["n_eval_tasks"]
-
         # meta-training loop
         # at each iteration, we first collect data from tasks, perform meta-updates, then try to evaluate
         for episode in range(self.general_training_args["episodes"]):
@@ -98,7 +77,7 @@ class PEARLExperiment(object):
                 for idx, env in enumerate(self.train_tasks):
                     env.reset()
                     self.task_idx = idx
-                    self.roll_out(self.general_training_args["num_initial_steps"], 1, np.inf)
+                    self.roll_out(self.general_training_args["num_initial_steps"], 1, np.inf, explore=True)
 
             # Sample data from train tasks.
             actor_loss = 0.0
@@ -117,11 +96,6 @@ class PEARLExperiment(object):
                 print(f"Gravity: {round(gravity,3)}\t Wind: {enable_wind}\t Wind power: {round(wind_power,3)}\t"
                       f" Turbulence power: {round(turbulence_power,3)}")
 
-                # TODO understand what impact it has how we gather data. We could gather only trajectories with
-                #  z~prior or z~posterior or z~posterior while not adding new data to the encoder or different com-
-                #  binations. What impact does it have to clear the encoder or not clearing it buffer? This could
-                #  be an experiment of its own, just to better understand how pearl behaves.
-
                 # collect some trajectories with z ~ prior
                 self.agent.encoder_replay_buffer.clear_buffer(idx)
                 if self.training_args["num_steps_prior"] > 0:
@@ -134,12 +108,12 @@ class PEARLExperiment(object):
                 # collect some trajectories with z ~ posterior
                 # self.agent.encoder_replay_buffer.clear_buffer(idx) # do we need to clear here??
                 if self.training_args["num_steps_posterior"] > 0:
-                    self.roll_out(self.training_args["num_steps_posterior"], 1,
-                                      self.training_args["update_post_train"])
+                    self.roll_out(self.training_args["num_steps_posterior"], 1, self.training_args["update_post_train"])
 
-            reward_history.append(self.episode_reward)
-            # Sample train tasks and compute gradient updates on parameters.
+            self.reward_history.append(self.episode_reward)
+
             print("Sample train tasks and compute gradient updates on parameters.")
+            loss = 0
             for train_step in range(self.general_training_args["num_train_steps_per_itr"]):
                 indices = np.random.choice(self.general_training_args["n_train_tasks"], self.training_args["meta_batch"])
                 loss = self.agent.optimize(indices)
@@ -150,37 +124,21 @@ class PEARLExperiment(object):
                 wandb.log({"Training episode": episode, "Batch": episode * self.general_training_args["num_train_steps_per_itr"] + train_step,
                            "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
 
-            print(f"episode actor loss is: {loss['actor_loss']} \t episode critic loss is: {loss['critic_loss']}")
-            print(f"Training episode: {episode} Episode reward: {self.episode_reward}"
-                  f" Average reward: {np.mean(reward_history)}")
-            print("_______________________________________________________________\n\n\n")
-            wandb.log({"Training episode": episode, "Episode reward": self.episode_reward,
-                       "Average reward": np.mean(reward_history)})
+            self.log_episode_reward(loss, episode, self.episode_reward)
+
+            # mechanism to abort training if bad convergence
+            if not self.converging():
+                break
 
             if episode % self.validation_args["eval_interval"] == 0:
-                print("starting evaluation")
-                for task_id, eval_task in enumerate(self.eval_tasks):
-                    solved = validate(self.agent, self.validation_args, agent_experiment_path, episode,
-                                      eval_task, task_id, pearl=True)
-                    if solved:
-                        print(f"pearl solved task {task_id}!!")
-                        solved_tasks[task_id] = solved
-
-                if all(solved_tasks):
-                    print(f"pearl solved all tasks (but not necessarily in a row)!!")
+                solved_all_tests = self.run_test_tasks(episode)
+                if solved_all_tests:
                     break
-                print("evaluation over\n")
 
-        # TODO note down the episodes in which the tasks were solved, so we can check the videos afterwards
-        print(f"pearl{'_ood' if ood else ''} training is over\n following tasks have been solved\n")
-        print(f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}\n\n")
-        with open(f"{experiment_path}/solved_env.txt", "a") as f:
-            f.write(
-                f"pearl{'_ood' if ood else ''} has solved the following tasks\n"
-                f"{['solved task: ' + str(s) for s, i in enumerate(solved_tasks) if i]}\n")
+        self.log_end()
 
     # one path length is between 80 - 200 steps.
-    def roll_out(self, num_samples, resample_z_rate, update_posterior_rate, add_to_enc_buffer=True):
+    def roll_out(self, num_samples, resample_z_rate, update_posterior_rate, add_to_enc_buffer=True, explore=False):
 
         # start from the prior
         self.agent.clear_z()
@@ -202,8 +160,11 @@ class PEARLExperiment(object):
                 self.agent.sample_z()
             # inner most loop
             # here we interact with the environment
-            for step in range(self.general_training_args["max_path_length"]):  # max path length=1000 >> num_samples=100
-                a = self.agent.action(o, addNoise=True)
+            for step in range(self.general_training_args["max_path_length"]):
+                if explore:
+                    a = env.action_space.sample()
+                else:
+                    a = self.agent.action(o, addNoise=True)
                 next_o, r, d, _, _ = env.step(a)
                 observations.append(o)
                 rewards.append(r)
