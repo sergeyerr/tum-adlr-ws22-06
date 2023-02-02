@@ -27,8 +27,8 @@ class BaselineExperiment(object):
         self.agent_name = str(cfg["agent"]["name"])
         self.general_training_args = cfg["training"]
         self.training_args = cfg["training"][self.agent_name]
-        self.agent_args = cfg["agent"][str(cfg["agent"]["name"])]
-        self.experiment_name = self.agent_args["experiment_name"]
+        self.agent_args = cfg["agent"][self.agent_name]
+        self.experiment_name = ""
         self.env_args = cfg["env"]
         self.validation_args = cfg["validation"]
 
@@ -44,7 +44,7 @@ class BaselineExperiment(object):
         self.experiment_path = experiment_path
         self.agent_experiment_path = ""
         self.solved_tasks = [False] * self.validation_args["n_eval_tasks"]
-        self.solved_episodes = [None] * self.validation_args["n_eval_tasks"]
+        self.solved_episodes = [""] * self.validation_args["n_eval_tasks"]
         self.last_avg_reward = -100000
         self.reward_history = deque(maxlen=100)
         self.no_convergence_counter = 0
@@ -66,6 +66,9 @@ class BaselineExperiment(object):
             random.seed(self.general_training_args["seed"])
 
     def run(self, **kwargs):
+
+        # clear reward history, list of solved tasks etc.
+        self.reset_variables()
 
         self.ood = kwargs["ood"]
         self.pass_params = kwargs["pass_params"]
@@ -104,7 +107,7 @@ class BaselineExperiment(object):
             temp = self.validation_args["log_model_every_training_batch"]
             print(f"================= {f'Sending weights to W&B every {temp} batch'} =================")
 
-        noise = ZeroNoise(size=self.n_actions)
+        noise = ZeroNoise(size=n_actions)
 
         print_run_info(self.train_tasks[0], self.agent, self.agent_args, self.training_args, self.env_args,
                        self.validation_args, noise)
@@ -168,7 +171,7 @@ class BaselineExperiment(object):
             self.log_episode_reward(loss, episode, episode_reward)
 
             # mechanism to abort training if bad convergence
-            if not self.converging():
+            if not self.converging(episode):
                 break
 
             if episode % self.validation_args["eval_interval"] == 0:
@@ -178,7 +181,16 @@ class BaselineExperiment(object):
 
         self.log_end()
 
+    def reset_variables(self):
+        self.solved_tasks = [False] * self.validation_args["n_eval_tasks"]
+        self.solved_episodes = [""] * self.validation_args["n_eval_tasks"]
+        self.last_avg_reward = -100000
+        self.reward_history = deque(maxlen=100)
+        self.no_convergence_counter = 0
+
     def make_experiment_directory(self):
+        self.experiment_name = self.agent_args["experiment_name"]
+
         if self.ood:
             self.experiment_name = self.experiment_name + "_ood"
 
@@ -189,10 +201,10 @@ class BaselineExperiment(object):
         os.mkdir(self.agent_experiment_path)
         os.mkdir(os.path.join(self.agent_experiment_path, "saves"))
 
-    def run_test_tasks(self, episode):
+    def run_test_tasks(self, episode, pearl=False):
         print("starting evaluation")
         for task_id, eval_task in enumerate(self.eval_tasks):
-            solved = validate(self.agent, self.validation_args, self.agent_experiment_path, episode, eval_task, task_id)
+            solved = validate(self.agent, self.validation_args, self.agent_experiment_path, episode, eval_task, task_id, pearl)
             if solved:
                 print(f"{self.agent_name} solved task {task_id} in episode {episode}!!")
                 self.solved_tasks[task_id] = solved
@@ -208,22 +220,23 @@ class BaselineExperiment(object):
         print(f"episode actor loss is: {loss['actor_loss']} \t episode critic loss is: {loss['critic_loss']}")
         print(f"Training episode: {episode} Episode reward: {episode_reward}"
               f" Average reward: {np.mean(self.reward_history)}")
-        print("_______________________________________________________________\n\n\n")
-
         wandb.log({"Training episode": episode, "Episode reward": episode_reward,
                    "Average reward": np.mean(self.reward_history)})
+        print("wandb logging successful")
+        print("_______________________________________________________________\n\n\n")
 
-    def converging(self):
+
+    def converging(self, episode):
         # mechanism to abort training if bad convergence
         if self.last_avg_reward >= np.mean(self.reward_history):
             self.no_convergence_counter += 1
             if self.no_convergence_counter > self.general_training_args["abort_training_after"]:
                 print(f"{self.agent_name + '_ood' if self.ood else ''}{'_wp' if self.pass_params else ''}"
-                      f" aborting training because agent is not converging")
+                      f" aborting training in episode {episode} because agent is not converging")
                 with open(f"{self.experiment_path}/solved_env.txt", "a") as f:
                     f.write(
                         f"{self.agent_name + '_ood' if self.ood else ''}{'_wp' if self.pass_params else ''}"
-                        f" did not converge. Training aborted\n")
+                        f" did not converge. Training aborted in episode {episode}\n")
                 return False
         else:
             self.no_convergence_counter -= 1 if self.no_convergence_counter else 0
@@ -238,4 +251,4 @@ class BaselineExperiment(object):
             f.write(
                 f"{self.agent_name + '_ood' if self.ood else ''}{'_wp' if self.pass_params else ''}"
                 f" has solved the following tasks\n"
-                f"{['solved task: ' + str(i) + ' in episodes: ' + str(self.solved_episodes[2:i]) for i, t in enumerate(self.solved_tasks) if t]}\n")
+                f"{['solved task: ' + str(i) + ' in episodes: ' + self.solved_episodes[i][2:] for i, t in enumerate(self.solved_tasks) if t]}\n")

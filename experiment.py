@@ -24,10 +24,7 @@ from baseline_train import BaselineExperiment
 # TODO write a parser that takes as input a txt file with specifications on the experiment like:
 #  pearl ood, sac ood, sac pass_param ood, sac, pearl, sac pass_param
 #  and translates that into an experiment
-
-# TODO to accelerate the experiment we can consider stopping the training if the average reward on the training data
-#  and/or evaluation data is not decreasing for N consecutive episodes
-
+git 
 # TODO increase max path length with each episode? It seems like pearl takes to long to solve a task. The trajectory
 #  is simply cut off because it is longer than max path length (but we do not give negative reward). So the agent
 #  is maybe learning to take a long time to land... maybe we should either prolong the path length to make pearl land

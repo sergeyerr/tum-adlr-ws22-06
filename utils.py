@@ -178,6 +178,9 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
                                              caption=f"gravity: {gravity}, wind: {enable_wind}, wind power: {wind_power}, turbulence power: {turbulence_power}, episode: {episode}")})
 
         if pearl:
+            print(f"stop reward of exploration traj: {stop_reward[0]}\n"
+                  f"stop reward of 1st informed traj: {stop_reward[1]}\n"
+                  f"stop reward of 2nd informed traj: {stop_reward[2]}")
             stop_reward = stop_reward[1:]  # this is done so that we do not count the exploration trajectory
 
         avg_reward = round(sum(stop_reward) / len(stop_reward), 3)

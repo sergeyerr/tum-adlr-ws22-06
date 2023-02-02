@@ -98,43 +98,16 @@ class PEARLAgent(SACAgent):
         r = torch.from_numpy(np.array([r])[None, None, ...]).to(device=self.device, dtype=torch.float)
         no = torch.from_numpy(no[None, None, ...]).to(device=self.device, dtype=torch.float)
 
-        # environment returns 1 d arrays
+        # a = tensor([[[*,*]]])
+        # o = tensor([[[*, *, *, *, *, *, *, *]]]) 1,1,8
+        # r = tensor([[[*]]])
         # this concatenates the features along the feature dimension
-        # o = [[[1, 2, 4],
-        #      [1, 2, 4],
-        #      [1, 2, 4]],
-        #     [[1, 2, 4],
-        #      [1, 2, 4],
-        #      [1, 2, 4]]]
-        # a = [[[1, 2],
-        #       [1, 2],
-        #       [1, 2]],
-        #      [[1, 2],
-        #       [1, 2],
-        #       [1, 2]]]
-        # data = [[[1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2]],
-        #         [[1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2]]]
+        # data = tensor([[[*, *, *, *, *, *, *, *, *, *, *]]]) 1,1,11
         if self.use_next_obs_in_context:
             data = torch.cat([o, a, r, no], dim=2)
         else:
             data = torch.cat([o, a, r], dim=2)
-        # this concatenates the context along the batch dimension
-        # context = [[[1, 2, 4, 1, 2], first task
-        #          [1, 2, 4, 1, 2], second transition from first task
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2]],
-        #         [[1, 2, 4, 1, 2], second task
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2]]]
+
         if self.context is None:
             self.context = data
         else:
@@ -244,11 +217,9 @@ class PEARLAgent(SACAgent):
 
         # Q and V networks
         # encoder will only get gradients from Q nets
-        # TODO in SAC we use new_actions here as input!
         q1_pred = self.q_1(torch.cat([obs, task_z], dim=1), actions)
         q2_pred = self.q_2(torch.cat([obs, task_z], dim=1), actions)
-        # TODO use in_ here instead?
-        v_pred = self.value(torch.cat([obs, task_z.detach()], dim=1))  # like in sac
+        v_pred = self.value(in_)  # like in sac
         # get targets for use in V and Q updates
         with torch.no_grad():
             target_v_values = self.target_value(torch.cat([next_obs, task_z], dim=1))  # like in sac
@@ -276,8 +247,8 @@ class PEARLAgent(SACAgent):
         self.context_encoder.optimizer.step()
 
         # compute min Q on the new actions
-        q1 = self.q_1(torch.cat([obs, task_z.detach()], dim=1), new_actions)  # like in sac
-        q2 = self.q_2(torch.cat([obs, task_z.detach()], dim=1), new_actions)  # like in sac
+        q1 = self.q_1(in_, new_actions)  # like in sac
+        q2 = self.q_2(in_, new_actions)  # like in sac
         min_q_new_actions = torch.min(q1, q2)
 
         # vf update
@@ -308,6 +279,7 @@ class PEARLAgent(SACAgent):
         policy_loss.backward()
         self.pi.optimizer.step()
 
+        self.z = self.z.detach()
         return loss_results
 
     def save_agent(self, save_path):

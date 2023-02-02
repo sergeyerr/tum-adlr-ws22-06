@@ -25,15 +25,17 @@ class PEARLExperiment(BaselineExperiment):
 
     def __init__(self, cfg, train_tasks, eval_tasks, experiment_path):
         super().__init__(cfg, train_tasks, eval_tasks, experiment_path)
-        self.training_args = cfg["training"]["pearl"]
-        self.agent_args = cfg["agent"]["pearl"]
-        self.experiment_name = self.agent_args["experiment_name"]
         self.agent_name = "pearl"
+        self.training_args = cfg["training"][self.agent_name]
+        self.agent_args = cfg["agent"][self.agent_name]
 
         self.episode_reward = 0.0
         self.task_idx = 0
 
     def run(self, **kwargs):
+
+        # clear reward history, list of solved tasks etc.
+        self.reset_variables()
 
         self.ood = kwargs["ood"]
         init_wandb = kwargs["init_wandb"]
@@ -51,11 +53,11 @@ class PEARLExperiment(BaselineExperiment):
         n_actions = self.train_tasks[0].action_space.shape[0] if \
             type(self.train_tasks[0].action_space) == gym.spaces.box.Box else self.train_tasks[0].action_space.n
 
-        env_info = {"input_dims": int(np.prod(self.train_tasks[0].observation_space.shape)),
+        env_info = {"obs_dim": int(np.prod(self.train_tasks[0].observation_space.shape)),
                          "n_actions": n_actions, "max_action": self.train_tasks[0].action_space.high}
 
         # this is critical so that the q and v functions have the right input size
-        env_info["input_dims"] += self.agent_args["latent_size"]
+        env_info["input_dims"] = env_info["obs_dim"] + self.agent_args["latent_size"]
 
         self.agent = PEARLAgent(**self.agent_args, **self.training_args, **self.general_training_args, **env_info)
 
@@ -72,7 +74,7 @@ class PEARLExperiment(BaselineExperiment):
             print(
                 f"================= {f'Sending weights to W&B every {temp} batch'} =================")
 
-        noise = ZeroNoise(self.n_actions)
+        noise = ZeroNoise(n_actions)
 
         print_run_info(self.train_tasks[0], self.agent, self.agent_args, self.training_args, self.env_args,
                        self.validation_args, noise)
@@ -136,11 +138,12 @@ class PEARLExperiment(BaselineExperiment):
             self.log_episode_reward(loss, episode, self.episode_reward)
 
             # mechanism to abort training if bad convergence
-            if not self.converging():
+            if not self.converging(episode):
+                print("breaking due to convergence")
                 break
 
             if episode % self.validation_args["eval_interval"] == 0:
-                solved_all_tests = self.run_test_tasks(episode)
+                solved_all_tests = self.run_test_tasks(episode, pearl=True)
                 if solved_all_tests:
                     break
 
