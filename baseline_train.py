@@ -32,14 +32,12 @@ class BaselineExperiment(object):
         self.env_args = cfg["env"]
         self.validation_args = cfg["validation"]
 
-        self.train_tasks = train_tasks
-        self.eval_tasks = eval_tasks
-
-        self.n_actions = self.train_tasks[0].action_space.shape[0] if \
-            type(self.train_tasks[0].action_space) == gym.spaces.box.Box else self.train_tasks[0].action_space.n
-
-        self.env_info = {"input_dims": int(np.prod(self.train_tasks[0].observation_space.shape)),
-                         "n_actions": self.n_actions, "max_action": self.train_tasks[0].action_space.high}
+        # normal train_tasks, train_tasks_with_params, train_tasks_ood
+        self.train_tasks_array = train_tasks
+        self.eval_tasks_array = eval_tasks
+        # default tasks are the in distribution training and eval tasks
+        self.train_tasks = self.train_tasks_array[0]
+        self.eval_tasks = self.eval_tasks_array[0]
 
         self.ood = False
         self.pass_params = False
@@ -67,23 +65,32 @@ class BaselineExperiment(object):
             np.random.seed(self.general_training_args["seed"])
             random.seed(self.general_training_args["seed"])
 
-
     def run(self, **kwargs):
-
-        self.agent = self.algorithm(**self.agent_args, **self.training_args, **self.general_training_args, **self.env_info)
 
         self.ood = kwargs["ood"]
         self.pass_params = kwargs["pass_params"]
         init_wandb = kwargs["init_wandb"]
 
-        if self.ood:
-            self.experiment_name = self.experiment_name + "_ood"
-
-        if self.pass_params:
-            self.experiment_name = self.experiment_name + "_pass_params"
-
         # create folder based on experiment_name
         self.make_experiment_directory()
+
+        if self.ood:
+            self.train_tasks = self.train_tasks_array[2]
+            self.eval_tasks = self.eval_tasks_array[2]
+        elif self.pass_params:
+            self.train_tasks = self.train_tasks_array[1]
+            self.eval_tasks = self.eval_tasks_array[1]
+        else:
+            self.train_tasks = self.train_tasks_array[0]
+            self.eval_tasks = self.eval_tasks_array[0]
+
+        n_actions = self.train_tasks[0].action_space.shape[0] if \
+            type(self.train_tasks[0].action_space) == gym.spaces.box.Box else self.train_tasks[0].action_space.n
+
+        env_info = {"input_dims": int(np.prod(self.train_tasks[0].observation_space.shape)),
+                         "n_actions": n_actions, "max_action": self.train_tasks[0].action_space.high}
+
+        self.agent = self.algorithm(**self.agent_args, **self.training_args, **self.general_training_args, **env_info)
 
         # Weights and biases initialization
         if init_wandb:
@@ -172,6 +179,12 @@ class BaselineExperiment(object):
         self.log_end()
 
     def make_experiment_directory(self):
+        if self.ood:
+            self.experiment_name = self.experiment_name + "_ood"
+
+        if self.pass_params:
+            self.experiment_name = self.experiment_name + "_pass_params"
+
         self.agent_experiment_path = os.path.join(self.experiment_path, f"{self.experiment_name}")
         os.mkdir(self.agent_experiment_path)
         os.mkdir(os.path.join(self.agent_experiment_path, "saves"))

@@ -30,25 +30,34 @@ class PEARLExperiment(BaselineExperiment):
         self.experiment_name = self.agent_args["experiment_name"]
         self.agent_name = "pearl"
 
-        # this is critical so that the q and v functions have the right input size
-        self.env_info["input_dims"] += self.agent_args["latent_size"]
-
         self.episode_reward = 0.0
         self.task_idx = 0
 
-
     def run(self, **kwargs):
-
-        self.agent = PEARLAgent(**self.agent_args, **self.training_args, **self.general_training_args, **self.env_info)
 
         self.ood = kwargs["ood"]
         init_wandb = kwargs["init_wandb"]
 
-        if self.ood:
-            self.experiment_name = self.experiment_name + "_ood"
-
         # create folder based on experiment_name
         self.make_experiment_directory()
+
+        if self.ood:
+            self.train_tasks = self.train_tasks_array[2]
+            self.eval_tasks = self.eval_tasks_array[2]
+        else:
+            self.train_tasks = self.train_tasks_array[0]
+            self.eval_tasks = self.eval_tasks_array[0]
+
+        n_actions = self.train_tasks[0].action_space.shape[0] if \
+            type(self.train_tasks[0].action_space) == gym.spaces.box.Box else self.train_tasks[0].action_space.n
+
+        env_info = {"input_dims": int(np.prod(self.train_tasks[0].observation_space.shape)),
+                         "n_actions": n_actions, "max_action": self.train_tasks[0].action_space.high}
+
+        # this is critical so that the q and v functions have the right input size
+        env_info["input_dims"] += self.agent_args["latent_size"]
+
+        self.agent = PEARLAgent(**self.agent_args, **self.training_args, **self.general_training_args, **env_info)
 
         # Weights and biases initialization
         if init_wandb:

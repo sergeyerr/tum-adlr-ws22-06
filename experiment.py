@@ -48,6 +48,11 @@ from baseline_train import BaselineExperiment
 
 # TODO check if the exploration trajectory in the evaluation of pearl has lower reward than other two trajectories
 
+# TODO try to use SAC2 inside PEARL
+
+# TODO do we need informed sac on ood tasks?
+
+
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def experiment(cfg: DictConfig):
     env_args = cfg.env
@@ -86,9 +91,9 @@ def experiment(cfg: DictConfig):
                                                pass_env_params=training_args.pass_env_parameters,
                                                render_mode='rgb_array')
 
-    # creates list of env with different parameterizations
-    train_tasks, train_tasks_with_params, train_tasks_ood = create_tasks(train_env_fabric, training_args.n_train_tasks)
-    eval_tasks, eval_tasks_with_params, eval_task_ood = create_tasks(test_env_fabric, validation_args.n_eval_tasks)
+    # creates list of env with different parameterizations, train_tasks, train_tasks_with_params, train_tasks_ood
+    train_tasks_array = create_tasks(train_env_fabric, training_args.n_train_tasks)
+    eval_tasks_array = create_tasks(test_env_fabric, validation_args.n_eval_tasks)
 
     config_dict = OmegaConf.to_object(cfg)
 
@@ -96,31 +101,26 @@ def experiment(cfg: DictConfig):
     # the training tasks will be in a different part of the environment parameter space compared to the eval tasks
 
     # pearl ood
-    config_dict["agent"]["name"] = "pearl"
-    pearl_experiment = PEARLExperiment(config_dict, train_tasks_ood, eval_task_ood)
-    pearl_experiment.run(experiment_path, init_wandb=False, ood=True)
+    pearl_experiment = PEARLExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
+    pearl_experiment.run(init_wandb=False, ood=True)
 
     # sac ood
     config_dict["agent"]["name"] = "sac"
-    sac_experiment = BaselineExperiment(config_dict, train_tasks_ood, eval_task_ood)
-    sac_experiment.run(experiment_path, init_wandb=False, ood=True, pass_params=False)
+    sac_experiment = BaselineExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
+    sac_experiment.run(init_wandb=False, ood=True, pass_params=False)
+
+    # informed sac ood ?? Do we need such an experiment?
 
     # inside distribution
 
     # pearl
-    config_dict["agent"]["name"] = "pearl"
-    pearl_experiment = PEARLExperiment(config_dict, train_tasks, eval_tasks)
-    pearl_experiment.run(experiment_path, init_wandb=False, ood=False)
+    pearl_experiment.run(init_wandb=False, ood=False)
 
-    # sac with environment parameters
-    config_dict["agent"]["name"] = "sac"
-    sac_experiment = BaselineExperiment(config_dict, train_tasks_with_params, eval_tasks_with_params)
-    sac_experiment.run(experiment_path, init_wandb=False, ood=False, pass_params=True)
+    # informed sac
+    sac_experiment.run(init_wandb=False, ood=False, pass_params=True)
 
     # sac
-    config_dict["agent"]["name"] = "sac"
-    sac_experiment = BaselineExperiment(config_dict, train_tasks, eval_tasks)
-    sac_experiment.run(experiment_path, init_wandb=False, ood=False, pass_params=False)
+    sac_experiment.run(init_wandb=False, ood=False, pass_params=False)
 
     # TODO have a third set of tasks for final validation.
 
