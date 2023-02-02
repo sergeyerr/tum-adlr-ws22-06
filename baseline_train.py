@@ -78,15 +78,19 @@ class BaselineExperiment(object):
         # create folder based on experiment_name
         self.make_experiment_directory()
 
-        if self.ood:
-            self.train_tasks = self.train_tasks_array[2]
-            self.eval_tasks = self.eval_tasks_array[2]
-        elif self.pass_params:
-            self.train_tasks = self.train_tasks_array[1]
-            self.eval_tasks = self.eval_tasks_array[1]
+        if self.pass_params and self.ood:
+            self.train_tasks = self.train_tasks_array[3]
+            self.eval_tasks = self.eval_tasks_array[3]
         else:
-            self.train_tasks = self.train_tasks_array[0]
-            self.eval_tasks = self.eval_tasks_array[0]
+            if self.ood:
+                self.train_tasks = self.train_tasks_array[2]
+                self.eval_tasks = self.eval_tasks_array[2]
+            elif self.pass_params:
+                self.train_tasks = self.train_tasks_array[1]
+                self.eval_tasks = self.eval_tasks_array[1]
+            else:
+                self.train_tasks = self.train_tasks_array[0]
+                self.eval_tasks = self.eval_tasks_array[0]
 
         n_actions = self.train_tasks[0].action_space.shape[0] if \
             type(self.train_tasks[0].action_space) == gym.spaces.box.Box else self.train_tasks[0].action_space.n

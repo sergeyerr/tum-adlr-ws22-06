@@ -102,11 +102,12 @@ def experiment(cfg: DictConfig):
     sac_experiment = BaselineExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
     sac_experiment.run(init_wandb=False, ood=True, pass_params=False)
 
+    # informed sac ood
+    sac_experiment.run(init_wandb=False, ood=True, pass_params=True)
+
     # pearl ood
     pearl_experiment = PEARLExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
     pearl_experiment.run(init_wandb=False, ood=True)
-
-    # informed sac ood ?? Do we need such an experiment?
 
     # inside distribution
 

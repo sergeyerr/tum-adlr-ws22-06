@@ -187,12 +187,9 @@ class PEARLExperiment(BaselineExperiment):
                 self.episode_reward += r
                 total_num_samples += 1
 
-                # in baseline the training happens at this point
-                # for that we would have to add the above observations etc. to the replay buffer
-                # we could add the transitions directly to the buffer instead of collecting paths and adding
-                # the paths
                 if d:
                     break
+
             num_trajs += 1
 
             actions = np.array(actions)

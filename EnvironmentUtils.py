@@ -179,12 +179,20 @@ class LunarEnvRandomFabric(LunarEnvFixedFabric):
                                        self.train_ood_gravity_lower, self.train_ood_gravity_upper,
                                        self.train_ood_wind_power_lower, self.train_ood_wind_power_upper,
                                        self.train_ood_turbulence_power_lower, self.train_ood_turbulence_power_upper)
+
+        env_ood_with_params = StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
+                                                render_mode=self.render_mode_pass, gravity=ood_gravity,
+                                                enable_wind=ood_enable_wind, wind_power=ood_wind_power,
+                                                turbulence_power=ood_turbulence_power), True,
+                                       self.train_ood_gravity_lower, self.train_ood_gravity_upper,
+                                       self.train_ood_wind_power_lower, self.train_ood_wind_power_upper,
+                                       self.train_ood_turbulence_power_lower, self.train_ood_turbulence_power_upper)
         
         if self.deterministic_reset:
             return DetermenisticResetWrapper(env, self.seed), DetermenisticResetWrapper(env_with_params, self.seed),\
-                DetermenisticResetWrapper(env_ood, self.seed)
+                DetermenisticResetWrapper(env_ood, self.seed), DetermenisticResetWrapper(env_ood_with_params, self.seed)
         else:
-            return env, env_with_params, env_ood
+            return env, env_with_params, env_ood, env_ood_with_params
         
     def get_uniform_parameters(self):
         gravity = random.uniform(self.gravity_lower, self.gravity_upper)
@@ -236,11 +244,19 @@ class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
                                        self.train_ood_wind_power_lower, self.train_ood_wind_power_upper,
                                        self.train_ood_turbulence_power_lower, self.train_ood_turbulence_power_upper)
 
+        env_ood_with_parameters = StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
+                                                render_mode=self.render_mode_pass, gravity=ood_gravity,
+                                                enable_wind=ood_enable_wind, wind_power=ood_wind_power,
+                                                turbulence_power=ood_turbulence_power), False,
+                                       self.eval_ood_gravity_lower, self.eval_ood_gravity_upper,
+                                       self.eval_ood_wind_power_lower, self.eval_ood_wind_power_upper,
+                                       self.eval_ood_turbulence_power_lower, self.eval_ood_turbulence_power_upper)
+
         if self.deterministic_reset:
             return DetermenisticResetWrapper(env, self.seed), DetermenisticResetWrapper(env_with_params, self.seed), \
-                DetermenisticResetWrapper(env_ood, self.seed)
+                DetermenisticResetWrapper(env_ood, self.seed), DetermenisticResetWrapper(env_ood_with_parameters, self.seed)
         else:
-            return env, env_with_params, env_ood
+            return env, env_with_params, env_ood, env_ood_with_parameters
         
         
     def number_of_test_points(self):
