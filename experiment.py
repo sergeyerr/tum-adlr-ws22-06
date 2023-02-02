@@ -24,7 +24,7 @@ from baseline_train import BaselineExperiment
 # TODO write a parser that takes as input a txt file with specifications on the experiment like:
 #  pearl ood, sac ood, sac pass_param ood, sac, pearl, sac pass_param
 #  and translates that into an experiment
-git 
+
 # TODO increase max path length with each episode? It seems like pearl takes to long to solve a task. The trajectory
 #  is simply cut off because it is longer than max path length (but we do not give negative reward). So the agent
 #  is maybe learning to take a long time to land... maybe we should either prolong the path length to make pearl land
@@ -97,14 +97,14 @@ def experiment(cfg: DictConfig):
     # Out of distribution testing:
     # the training tasks will be in a different part of the environment parameter space compared to the eval tasks
 
-    # pearl ood
-    pearl_experiment = PEARLExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
-    pearl_experiment.run(init_wandb=False, ood=True)
-
     # sac ood
     config_dict["agent"]["name"] = "sac"
     sac_experiment = BaselineExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
     sac_experiment.run(init_wandb=False, ood=True, pass_params=False)
+
+    # pearl ood
+    pearl_experiment = PEARLExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
+    pearl_experiment.run(init_wandb=False, ood=True)
 
     # informed sac ood ?? Do we need such an experiment?
 

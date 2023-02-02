@@ -67,6 +67,7 @@ class BaselineExperiment(object):
 
     def run(self, **kwargs):
 
+        print("Baseline agent name is: " + self.agent_name)
         # clear reward history, list of solved tasks etc.
         self.reset_variables()
 
@@ -172,6 +173,7 @@ class BaselineExperiment(object):
 
             # mechanism to abort training if bad convergence
             if not self.converging(episode):
+                print("breaking due to convergence")
                 break
 
             if episode % self.validation_args["eval_interval"] == 0:
@@ -225,11 +227,12 @@ class BaselineExperiment(object):
         print("wandb logging successful")
         print("_______________________________________________________________\n\n\n")
 
-
     def converging(self, episode):
         # mechanism to abort training if bad convergence
         if self.last_avg_reward >= np.mean(self.reward_history):
             self.no_convergence_counter += 1
+            print(f"convergence increased to: {self.no_convergence_counter}\n")
+            print(f"threshold is: {self.general_training_args['abort_training_after']}\n")
             if self.no_convergence_counter > self.general_training_args["abort_training_after"]:
                 print(f"{self.agent_name + '_ood' if self.ood else ''}{'_wp' if self.pass_params else ''}"
                       f" aborting training in episode {episode} because agent is not converging")
@@ -238,9 +241,12 @@ class BaselineExperiment(object):
                         f"{self.agent_name + '_ood' if self.ood else ''}{'_wp' if self.pass_params else ''}"
                         f" did not converge. Training aborted in episode {episode}\n")
                 return False
+            else:
+                return True
         else:
             self.no_convergence_counter -= 1 if self.no_convergence_counter else 0
             self.last_avg_reward = np.mean(self.reward_history)
+            print(f"convergence decreased to: {self.no_convergence_counter}")
             return True
 
     def log_end(self):

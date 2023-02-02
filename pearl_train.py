@@ -34,6 +34,7 @@ class PEARLExperiment(BaselineExperiment):
 
     def run(self, **kwargs):
 
+        print("Pearl experiment agent name is: " + self.agent_name)
         # clear reward history, list of solved tasks etc.
         self.reset_variables()
 
