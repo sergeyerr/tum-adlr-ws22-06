@@ -229,14 +229,14 @@ class BaselineExperiment(object):
         wandb.log({"Training episode": episode, "Episode reward": episode_reward,
                    "Average reward": np.mean(self.reward_history)})
         print("wandb logging successful")
-        print("_______________________________________________________________\n\n\n")
 
     def converging(self, episode):
         # mechanism to abort training if bad convergence
         if self.last_avg_reward >= np.mean(self.reward_history):
             self.no_convergence_counter += 1
-            print(f"convergence increased to: {self.no_convergence_counter}\n")
-            print(f"threshold is: {self.general_training_args['abort_training_after']}\n")
+            print(f"convergence counter increased to: {self.no_convergence_counter}\n")
+            print(f"threshold is: {self.general_training_args['abort_training_after']}")
+            print("_______________________________________________________________\n\n\n")
             if self.no_convergence_counter > self.general_training_args["abort_training_after"]:
                 print(f"{self.agent_name + '_ood' if self.ood else ''}{'_wp' if self.pass_params else ''}"
                       f" aborting training in episode {episode} because agent is not converging")
@@ -250,7 +250,8 @@ class BaselineExperiment(object):
         else:
             self.no_convergence_counter -= 1 if self.no_convergence_counter else 0
             self.last_avg_reward = np.mean(self.reward_history)
-            print(f"convergence decreased to: {self.no_convergence_counter}")
+            print(f"convergence counter decreased to: {self.no_convergence_counter}")
+            print("_______________________________________________________________\n\n\n")
             return True
 
     def log_end(self):

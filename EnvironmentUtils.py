@@ -240,14 +240,14 @@ class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
                                                 render_mode=self.render_mode_pass, gravity=ood_gravity,
                                                 enable_wind=ood_enable_wind, wind_power=ood_wind_power,
                                                 turbulence_power=ood_turbulence_power), False,
-                                       self.train_ood_gravity_lower, self.train_ood_gravity_upper,
-                                       self.train_ood_wind_power_lower, self.train_ood_wind_power_upper,
-                                       self.train_ood_turbulence_power_lower, self.train_ood_turbulence_power_upper)
+                                       self.eval_ood_gravity_lower, self.eval_ood_gravity_upper,
+                                       self.eval_ood_wind_power_lower, self.eval_ood_wind_power_upper,
+                                       self.eval_ood_turbulence_power_lower, self.eval_ood_turbulence_power_upper)
 
         env_ood_with_parameters = StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
                                                 render_mode=self.render_mode_pass, gravity=ood_gravity,
                                                 enable_wind=ood_enable_wind, wind_power=ood_wind_power,
-                                                turbulence_power=ood_turbulence_power), False,
+                                                turbulence_power=ood_turbulence_power), True,
                                        self.eval_ood_gravity_lower, self.eval_ood_gravity_upper,
                                        self.eval_ood_wind_power_lower, self.eval_ood_wind_power_upper,
                                        self.eval_ood_turbulence_power_lower, self.eval_ood_turbulence_power_upper)
