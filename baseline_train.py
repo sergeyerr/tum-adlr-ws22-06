@@ -238,28 +238,28 @@ class BaselineExperiment(object):
             print(f"threshold is: {self.general_training_args['abort_training_after']}")
             print("_______________________________________________________________\n\n\n")
             if self.no_convergence_counter > self.general_training_args["abort_training_after"]:
-                print(f"{self.agent_name + '_ood' if self.ood else ''}{'_wp' if self.pass_params else ''}"
+                print(f"{self.agent_name}{'_ood' if self.ood else ''}{'_wp' if self.pass_params else ''}"
                       f" aborting training in episode {episode} because agent is not converging")
                 with open(f"{self.experiment_path}/solved_env.txt", "a") as f:
                     f.write(
-                        f"{self.agent_name + '_ood' if self.ood else ''}{'_wp' if self.pass_params else ''}"
+                        f"{self.agent_name}{'_ood' if self.ood else ''}{'_wp' if self.pass_params else ''}"
                         f" did not converge. Training aborted in episode {episode}\n")
                 return False
             else:
                 return True
         else:
-            self.no_convergence_counter -= 1 if self.no_convergence_counter else 0
+            self.no_convergence_counter = 0
             self.last_avg_reward = np.mean(self.reward_history)
             print(f"convergence counter decreased to: {self.no_convergence_counter}")
             print("_______________________________________________________________\n\n\n")
             return True
 
     def log_end(self):
-        print(f"{self.agent_name + '_ood' if self.ood else ''}{'_wp' if self.pass_params else ''}"
+        print(f"{self.agent_name}{'_ood' if self.ood else ''}{'_wp' if self.pass_params else ''}"
               f" training is over\nfollowing tasks have been solved\n")
         print(f"{['solved task: ' + str(s) for s, i in enumerate(self.solved_tasks) if i]}\n\n")
         with open(f"{self.experiment_path}/solved_env.txt", "a") as f:
             f.write(
-                f"{self.agent_name + '_ood' if self.ood else ''}{'_wp' if self.pass_params else ''}"
+                f"{self.agent_name}{'_ood' if self.ood else ''}{'_wp' if self.pass_params else ''}"
                 f" has solved the following tasks\n"
                 f"{['solved task: ' + str(i) + ' in episodes: ' + self.solved_episodes[i][2:] for i, t in enumerate(self.solved_tasks) if t]}\n")
