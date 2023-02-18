@@ -26,8 +26,8 @@ class PEARLExperiment(BaselineExperiment):
     def __init__(self, cfg, train_tasks, eval_tasks, experiment_path):
         super().__init__(cfg, train_tasks, eval_tasks, experiment_path)
         self.agent_name = "pearl"
-        self.training_args = cfg["training"][self.agent_name]
-        self.agent_args = cfg["agent"][self.agent_name]
+        self.training_args = cfg["training"]
+        self.agent_args = cfg["agent"]
 
         self.episode_reward = 0.0
         self.task_idx = 0
@@ -60,7 +60,7 @@ class PEARLExperiment(BaselineExperiment):
         # this is critical so that the q and v functions have the right input size
         env_info["input_dims"] = env_info["obs_dim"] + self.agent_args["latent_size"]
 
-        self.agent = PEARLAgent(**self.agent_args, **self.training_args, **self.general_training_args, **env_info)
+        self.agent = PEARLAgent(**self.agent_args, **self.training_args, **env_info)
 
         # Weights and biases initialization
         if init_wandb:

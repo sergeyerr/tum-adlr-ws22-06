@@ -1,4 +1,4 @@
-name: "pearl"
+name: pearl
 tau: 0.005 # for SAC target network update
 pi_lr: 3E-4
 q_lr: 3E-4
@@ -13,3 +13,4 @@ use_information_bottleneck: True # False makes latent context deterministic
 use_next_obs_in_context: False # use next obs if it is useful in distinguishing tasks
 latent_size: 5 # dimension of latent space in context encoder
 net_size: 300 # number of neurons in hidden layer
+reward_scale: 2.0 # scale rewards before constructing Bellman update, effectively controls weight on the entropy of the policy

@@ -26,8 +26,8 @@ class BaselineExperiment(object):
         self.cfg = cfg
         self.agent_name = str(cfg["agent"]["name"])
         self.general_training_args = cfg["training"]
-        self.training_args = cfg["training"][self.agent_name]
-        self.agent_args = cfg["agent"][self.agent_name]
+        self.training_args = cfg["training"]
+        self.agent_args = cfg["agent"]
         self.experiment_name = ""
         self.env_args = cfg["env"]
         self.validation_args = cfg["validation"]
@@ -98,7 +98,7 @@ class BaselineExperiment(object):
         env_info = {"input_dims": int(np.prod(self.train_tasks[0].observation_space.shape)),
                          "n_actions": n_actions, "max_action": self.train_tasks[0].action_space.high}
 
-        self.agent = self.algorithm(**self.agent_args, **self.training_args, **self.general_training_args, **env_info)
+        self.agent = self.algorithm(**self.agent_args, **self.training_args, **env_info)
 
         # Weights and biases initialization
         if init_wandb:

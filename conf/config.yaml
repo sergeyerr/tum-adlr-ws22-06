@@ -1,44 +1,21 @@
+defaults:
+  - _self_
+  - agent: sac2
+  - optional training: ${agent}
+  - optional validation: ${agent}
+  - optional sweep: ${agent}
+
+
 agent:
-  name: pearl # this is only used to determine which of the sub groups to use
+# modify the name!
+  experiment_name: "${agent.name}"
 
-  pearl:
-    experiment_name: pearl
-    tau: 0.005 # for SAC target network update
-    pi_lr: 3E-4
-    q_lr: 3E-4
-    vf_lr: 3E-4 # is not used, instead value network uses same lr as q network
-    context_lr: 3E-4
-    gamma: 0.99 # RL discount factor
-    kl_lambda: 0.1 # weight on KL divergence term in encoder loss
-    policy_mean_reg_weight: 1E-3
-    policy_std_reg_weight: 1E-3
-    policy_pre_activation_weight: 0
-    use_information_bottleneck: True # False makes latent context deterministic
-    use_next_obs_in_context: False # use next obs if it is useful in distinguishing tasks
-    latent_size: 5 # dimension of latent space in context encoder
-    net_size: 300 # number of neurons in hidden layer
-    reward_scale: 2.0 # scale rewards before constructing Bellman update, effectively controls weight on the entropy of the policy
-
-  sac:
-    pi_lr: 0.0003
-    q_lr: 0.0003
-    gamma: 0.99
-    tau: 0.005
-    reward_scale: 2
-    experiment_name: sac
-
-  sac2:
-    pi_lr: 0.0001
-    q_lr: 0.001
-    gamma: 0.99
-    tau: 0.005
-    reward_scale: 0.2
-    alpha: 1
-    experiment_name: sac2
+  
 
 training:
   n_train_tasks: 100
-  pass_env_parameters: False
+  pass_env_parameters: True
+  ood: True
   random: True
   episodes: 500
   num_initial_steps: 1000 # number of transitions collected per task before training
@@ -50,35 +27,6 @@ training:
   max_path_length: 1000 #200 max path length for this environment
   abort_training_after: 80 # if average reward does not increase for abort_training_after many episodes, abort training
 
-
-  pearl:
-    meta_batch: 32 # number of tasks to average the gradient across 64
-    num_steps_prior: 600 # number of transitions to collect per task with z ~ prior
-    num_steps_posterior: 0 # number of transitions to collect per task with z ~ posterior
-    num_extra_rl_steps_posterior: 600 # number of additional transitions to collect per task with z ~ posterior that are only used to train the policy and NOT the encoder
-    # num_steps_per_eval: 600  # nuumber of transitions to eval on
-    batch_size: 256 # number of transitions in the RL batch 1024
-    embedding_batch_size: 64 # number of transitions in the context batch 1024
-    update_post_train: 1 # how often to resample the context when collecting data during training (in trajectories)
-    replay_buffer_size: 1000000
-
-  sac:
-    episode_length: 2000 # I make this approximately the sum of num_steps_prior, num_steps_posterior, num_extra_rl_steps_posterior, num_initial_steps
-    batch_size: 256
-    train_batches: 1
-    update_after: 1000
-    update_every: 1
-    min_replay_size: 1000
-    replay_buffer_size: 1000000
-
-  sac2:
-    episode_length: 2200 # I make this approximately the sum of num_steps_prior, num_steps_posterior, num_extra_rl_steps_posterior, num_initial_steps
-    batch_size: 64
-    train_batches: 1
-    update_after: 1000
-    update_every: 1
-    min_replay_size: 1000
-    replay_buffer_size: 1000000
 
 validation:
   log_model_wandb: True

@@ -95,49 +95,56 @@ def experiment(cfg: DictConfig):
     config_dict = OmegaConf.to_object(cfg)
 
     # SAC experiment
-    config_dict["agent"]["name"] = "sac"
-    sac_experiment = BaselineExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
+    #config_dict["agent"]["name"] = "sac"
+    if (config_dict['agent']['name'] == 'pearl'):
+        experiment = PEARLExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
+    else:
+        experiment = BaselineExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
+        
+    experiment.run(init_wandb=False, ood=training_args['ood'], pass_params=training_args['pass_env_parameters'])
+    
+    # sac_experiment = BaselineExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
 
-    # Pearl experiment
-    pearl_experiment = PEARLExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
+    # # Pearl experiment
+    # pearl_experiment = PEARLExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
 
-    # SAC2 experiment
-    config_dict["agent"]["name"] = "sac2"
-    sac2_experiment = BaselineExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
+    # # SAC2 experiment
+    # #config_dict["agent"]["name"] = "sac2"
+    # sac2_experiment = BaselineExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
 
     # outside distribution______________________________________________________
 
-    # informed sac2 ood
-    sac2_experiment.run(init_wandb=False, ood=True, pass_params=True)
+    # # informed sac2 ood
+    # sac2_experiment.run(init_wandb=False, ood=True, pass_params=True)
 
-    # sac2 ood
-    sac2_experiment.run(init_wandb=False, ood=True, pass_params=False)
+    # # sac2 ood
+    # sac2_experiment.run(init_wandb=False, ood=True, pass_params=False)
 
-    # informed sac ood
-    sac_experiment.run(init_wandb=False, ood=True, pass_params=True)
+    # # informed sac ood
+    # sac_experiment.run(init_wandb=False, ood=True, pass_params=True)
 
-    # sac ood
-    sac_experiment.run(init_wandb=False, ood=True, pass_params=False)
+    # # sac ood
+    # sac_experiment.run(init_wandb=False, ood=True, pass_params=False)
 
-    # pearl ood
-    pearl_experiment.run(init_wandb=False, ood=True)
+    # # pearl ood
+    # pearl_experiment.run(init_wandb=False, ood=True)
 
-    # inside distribution____________________________________________________
+    # # inside distribution____________________________________________________
 
-    # pearl
-    pearl_experiment.run(init_wandb=False, ood=False)
+    # # pearl
+    # pearl_experiment.run(init_wandb=False, ood=False)
 
-    # informed sac2
-    sac2_experiment.run(init_wandb=False, ood=False, pass_params=True)
+    # # informed sac2
+    # sac2_experiment.run(init_wandb=False, ood=False, pass_params=True)
 
-    # sac2
-    sac2_experiment.run(init_wandb=False, ood=False, pass_params=False)
+    # # sac2
+    # sac2_experiment.run(init_wandb=False, ood=False, pass_params=False)
 
-    # informed sac
-    sac_experiment.run(init_wandb=False, ood=False, pass_params=True)
+    # # informed sac
+    # sac_experiment.run(init_wandb=False, ood=False, pass_params=True)
 
-    # sac
-    sac_experiment.run(init_wandb=False, ood=False, pass_params=False)
+    # # sac
+    # sac_experiment.run(init_wandb=False, ood=False, pass_params=False)
 
     # TODO have a third set of tasks for final validation.
 

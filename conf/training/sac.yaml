@@ -1,4 +1,7 @@
-# from the papers
+episode_length: 2000 # I make this approximately the sum of num_steps_prior, num_steps_posterior, num_extra_rl_steps_posterior, num_initial_steps
 batch_size: 256
-# we shouldn't add any noise to sac methods!
-noise: "Zero"
+train_batches: 1
+update_after: 1000
+update_every: 1
+min_replay_size: 1000
+replay_buffer_size: 1000000
