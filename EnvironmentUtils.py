@@ -60,7 +60,7 @@ class DetermenisticResetWrapper(gym.Wrapper):
         return self.env.reset(seed=self.seed)
     
     
-class RandomWindWrapper(gym.Wrapper):
+class RandomWindOnResetWrapper(gym.Wrapper):
     def __init__(self, env):
         super().__init__(env)
     
@@ -159,8 +159,9 @@ class LunarEnvFixedFabric:
 
 
 class LunarEnvRandomFabric(LunarEnvFixedFabric):
-    def __init__(self, pass_env_params, render_mode=None, **env_params):
+    def __init__(self, pass_env_params, render_mode=None, random_wind_on_reset=True, **env_params):
         super().__init__(pass_env_params, render_mode, **env_params)
+        self.random_wind_on_reset = random_wind_on_reset
         
     def generate_env(self):
         if self.random_type == "Uniform":
@@ -200,10 +201,18 @@ class LunarEnvRandomFabric(LunarEnvFixedFabric):
                                        self.train_ood_turbulence_power_lower, self.train_ood_turbulence_power_upper)
         
         if self.deterministic_reset:
-            return DetermenisticResetWrapper(env, self.seed), DetermenisticResetWrapper(env_with_params, self.seed),\
-                DetermenisticResetWrapper(env_ood, self.seed), DetermenisticResetWrapper(env_ood_with_params, self.seed)
-        else:
-            return env, env_with_params, env_ood, env_ood_with_params
+            env = DetermenisticResetWrapper(env, self.seed)
+            env_with_params = DetermenisticResetWrapper(env_with_params, self.seed)
+            env_ood = DetermenisticResetWrapper(env_ood, self.seed)
+            env_ood_with_params = DetermenisticResetWrapper(env_ood_with_params, self.seed)
+                
+        if self.random_wind_on_reset:
+            env = RandomWindOnResetWrapper(env)
+            env_with_params = RandomWindOnResetWrapper(env_with_params)
+            env_ood = RandomWindOnResetWrapper(env_ood)
+            env_ood_with_params = RandomWindOnResetWrapper(env_ood_with_params)
+            
+        return env, env_with_params, env_ood, env_ood_with_params
         
     def get_uniform_parameters(self):
         gravity = random.uniform(self.gravity_lower, self.gravity_upper)
@@ -222,11 +231,11 @@ class LunarEnvRandomFabric(LunarEnvFixedFabric):
 class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
     '''Fabric for generating environments with parameters from hypercube grid 
     '''
-    def __init__(self, pass_env_params, render_mode=None, points_per_axis=3, check_without_wind=False, **env_params):
+    def __init__(self, pass_env_params, render_mode=None, points_per_axis=3, check_without_wind=False, random_wind_on_reset = True, **env_params):
         super().__init__(pass_env_params, render_mode, **env_params)
         self.test_parameters, self.test_parameters_ood = ValidationHypercube(points_per_axis=points_per_axis, check_no_wind=check_without_wind, **env_params).get_points()
         self.iter = 0
-    
+        self.random_wind_on_reset = random_wind_on_reset
     
     def generate_env(self):
         
@@ -255,7 +264,7 @@ class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
                                        self.eval_ood_wind_power_lower, self.eval_ood_wind_power_upper,
                                        self.eval_ood_turbulence_power_lower, self.eval_ood_turbulence_power_upper)
 
-        env_ood_with_parameters = StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
+        env_ood_with_params = StateInjectorWrapper(gym.make('LunarLander-v2', continuous=True,
                                                 render_mode=self.render_mode_pass, gravity=ood_gravity,
                                                 enable_wind=ood_enable_wind, wind_power=ood_wind_power,
                                                 turbulence_power=ood_turbulence_power), True,
@@ -264,10 +273,18 @@ class LunarEnvHypercubeFabric(LunarEnvFixedFabric):
                                        self.eval_ood_turbulence_power_lower, self.eval_ood_turbulence_power_upper)
 
         if self.deterministic_reset:
-            return DetermenisticResetWrapper(env, self.seed), DetermenisticResetWrapper(env_with_params, self.seed), \
-                DetermenisticResetWrapper(env_ood, self.seed), DetermenisticResetWrapper(env_ood_with_parameters, self.seed)
-        else:
-            return env, env_with_params, env_ood, env_ood_with_parameters
+            env = DetermenisticResetWrapper(env, self.seed)
+            env_with_params = DetermenisticResetWrapper(env_with_params, self.seed)
+            env_ood = DetermenisticResetWrapper(env_ood, self.seed)
+            env_ood_with_params = DetermenisticResetWrapper(env_ood_with_params, self.seed)
+                
+        if self.random_wind_on_reset:
+            env = RandomWindOnResetWrapper(env)
+            env_with_params = RandomWindOnResetWrapper(env_with_params)
+            env_ood = RandomWindOnResetWrapper(env_ood)
+            env_ood_with_params = RandomWindOnResetWrapper(env_ood_with_params)
+            
+        return env, env_with_params, env_ood, env_ood_with_params
         
         
     def number_of_test_points(self):
