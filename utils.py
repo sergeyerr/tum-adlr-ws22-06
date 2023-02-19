@@ -57,9 +57,8 @@ def print_run_info(env, agent, agent_args, training_args, env_args, validation_a
     
     print(f"================= {'Begin Training'.center(30)} =================")
 
-    
 
-def validate(agent, validation_args, experiment_path, episode, in_eval_task, task_id, pearl=False):
+def validate_task(agent, validation_args, experiment_path, episode, in_eval_task, task_id, pearl=False):
 
     '''
     doing all the validation stuff + logging
@@ -70,25 +69,14 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
     gravity, enable_wind, wind_power, turbulence_power = in_eval_task.gravity, in_eval_task.enable_wind,\
         in_eval_task.wind_power, in_eval_task.turbulence_power
 
-    if pearl:
-        evaluation_episodes = range(validation_args["eval_eps"])
-        record_video_on_eval = validation_args["record_video_on_eval"]
-        log_actions = validation_args["log_actions"]
-        validation_episode_length = validation_args["validation_episode_length"]
-        eval_stop_condition = validation_args["eval_stop_condition"]
-        validation_traj_num = validation_args["validation_traj_num"]
-    else:
-        evaluation_episodes = range(validation_args.eval_eps)
-        record_video_on_eval = validation_args.record_video_on_eval
-        log_actions = validation_args.log_actions
-        validation_episode_length = validation_args.validation_episode_length
-        eval_stop_condition = validation_args.eval_stop_condition
-        validation_traj_num = validation_args.validation_traj_num
+    evaluation_episodes = range(validation_args["eval_eps"])
+    record_video_on_eval = validation_args["record_video_on_eval"]
+    log_actions = validation_args["log_actions"]
+    validation_episode_length = validation_args["validation_episode_length"]
+    eval_stop_condition = validation_args["eval_stop_condition"]
+    validation_traj_num = validation_args["validation_traj_num"]
 
     for evaluation_episode in evaluation_episodes:
-
-        num_traj = 0
-        rewards = 0
 
         # log step-action-reward plot for each validation episode
         if log_actions:
@@ -103,8 +91,28 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
             agent.clear_z()
 
         for traj in range(validation_traj_num):
+            # sum of rewards collected in the trajectory
+            rewards = 0
             # use experiment_path folder
-            if record_video_on_eval and evaluation_episode == 0 and traj == 0:
+
+            # TODO think about how the validation stop condition should be calculated:
+            # instead of using traj=0 record traj=validation_traj_num-1. This makes sense, because pearl is
+            #  uninformed in the first trajectory, but will have context starting from the 2nd trajectory.
+            #  When using the 'min' stop condition pearl will also not perform as good, because the first uninformed
+            #  trajectory will not have as high rewards as the upcoming informed trajectories
+
+            # how to calculate the stop condition is a critical decision. If we decide to take min, then the uninformed
+            # pearl trajectory will be the one deciding whether pearl solved the eval task. The uninformed trajectory,
+            # however, is not representative of pearls performance.
+            # if we take max, it might also not be representative. If we take average than three eval traj is too few,
+            # as the first uninformed trajectory would need to have a reward way above 150 points in order to make for
+            # the average reward to be larger than 240. This is quite unrealistic.
+            # I think the best way would be to take the min between the two informed trajectories (or the average)
+
+            # another idea would be to actually store the context of the eval tasks so that next time we do not need
+            # an exploration trajectory
+
+            if record_video_on_eval and evaluation_episode == 0 and traj == validation_traj_num-1:
                 # create tmp env with videos
                 video_path = os.path.join(experiment_path, "videos", str(episode), str(task_id))
                 eval_task = RecordVideo(in_eval_task, video_path)
@@ -113,6 +121,9 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
                         f"gravity: {gravity}\n enable_wind: {enable_wind}\n, wind_power: {wind_power}\n, turbulence_power: {turbulence_power}\n")
             else:
                 eval_task = in_eval_task
+
+            if pearl and traj >= validation_args["num_exp_traj_eval"]:
+                agent.infer_posterior(agent.context)
 
             obs, info = eval_task.reset()
 
@@ -134,10 +145,10 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
                 # Update rewards
                 rewards += reward
 
-                if log_actions:
-                    steps.append(step)
-                    actions_main.append(action[0])
-                    actions_left_right.append(action[1])
+                # if log_actions:
+                #     steps.append(step)
+                #     actions_main.append(action[0])
+                #     actions_left_right.append(action[1])
                     #rewards_steps.append(reward)
 
                 # End episode if done
@@ -148,66 +159,67 @@ def validate(agent, validation_args, experiment_path, episode, in_eval_task, tas
             # want to finish the evaluation once the average stop_reward over all trajectories is above threshold
             stop_reward.append(rewards)
 
-            num_traj += 1
-            if pearl and num_traj > validation_args["num_exp_traj_eval"]:
-                agent.infer_posterior(agent.context)
-
-
         # seems to save only the last plot
-        if log_actions and evaluation_episode == 0:
-            wandb.log({"Validation after episode": episode,
-                       "Gravity": gravity,
-                       "Wind": enable_wind,
-                       "Wind power": wind_power,
-                       "Turbulence power": turbulence_power,
-                       "Action plot":  wandb.plot.line_series(xs=steps, ys=[actions_main, actions_left_right], keys=["Main engine", "left/right engine"], xname="step")})
+        # if log_actions and evaluation_episode == 0:
+        #     wandb.log({"Validation after episode": episode,
+        #                "Gravity": gravity,
+        #                "Wind": enable_wind,
+        #                "Wind power": wind_power,
+        #                "Turbulence power": turbulence_power,
+        #                "Action plot":  wandb.plot.line_series(xs=steps, ys=[actions_main, actions_left_right], keys=["Main engine", "left/right engine"], xname="step")})
 
-        if record_video_on_eval and evaluation_episode == 0:
-            wandb.log({"Validation after episode": episode,
-                       "Gravity": gravity,
-                       "Wind": enable_wind,
-                       "Wind power": wind_power,
-                       "Turbulence power": turbulence_power,
-                        "Video": wandb.Video(os.path.join(video_path, "rl-video-episode-0.mp4"), fps=4, format="gif",
-                                             caption=f"gravity: {gravity}, wind: {enable_wind}, wind power: {wind_power}, turbulence power: {turbulence_power}, episode: {episode}")})
+        # if record_video_on_eval and evaluation_episode == 0:
+        #     wandb.log({"Validation after episode": episode,
+        #                "Gravity": gravity,
+        #                "Wind": enable_wind,
+        #                "Wind power": wind_power,
+        #                "Turbulence power": turbulence_power,
+        #                 "Video": wandb.Video(os.path.join(video_path, "rl-video-episode-0.mp4"), fps=4, format="gif",
+        #                                      caption=f"gravity: {gravity}, wind: {enable_wind}, wind power: {wind_power}, turbulence power: {turbulence_power}, episode: {episode}")})
+
+        if pearl:
+            print(f"stop reward of exploration traj: {stop_reward[0]}\n"
+                  f"stop reward of 1st informed traj: {stop_reward[1]}\n"
+                  f"stop reward of 2nd informed traj: {stop_reward[2]}")
+            stop_reward = stop_reward[1:]  # this is done so that we do not count the exploration trajectory
+
+        avg_reward = round(sum(stop_reward) / len(stop_reward), 3)
+        min_reward = round(min(stop_reward), 3)
+        max_reward = round(max(stop_reward), 3)
+        
+        wandb.log({"Validation episode": episode,  "Average evaluation reward": avg_reward, "Min evaluation reward": min_reward, "Max evaluation reward": max_reward, "Gravity": gravity, "Wind": enable_wind, "Wind power": wind_power, "Turbulence power": turbulence_power, "task_id": task_id})
+
+        if eval_stop_condition == "avg":
+            stop_reward = avg_reward
+        elif eval_stop_condition == "min":
+            stop_reward = min_reward
+        elif eval_stop_condition == "max":
+            stop_reward = max_reward
+        else:
+            raise ValueError(f"Unknown eval_stop_condition {eval_stop_condition}")
 
 
-    avg_reward = round(sum(stop_reward) / len(stop_reward), 3)
-    min_reward = round(min(stop_reward), 3)
-    
-    if eval_stop_condition == "avg":
-        stop_reward = avg_reward
-    elif eval_stop_condition == "min":
-        stop_reward = min_reward
-    else:
-        raise ValueError(f"Unknown eval_stop_condition {eval_stop_condition}")
-    
-    save_path = os.path.join(experiment_path, "saves")
-    
-    agent.save_agent(save_path)
-    
-    
-    art = wandb.Artifact("lunar_lander_model", type="model")
-    for f in os.listdir(save_path):
-        art.add_file(os.path.join(save_path, f))
-    wandb.log_artifact(art)
-    
-    
-    print(f"Episode: {episode} | Average evaluation reward: {avg_reward} | Min evaluation reward: {min_reward} | Agent saved at {save_path}")
-    
-    wandb.log({"Validation after episode": episode,  "Average evaluation reward": avg_reward,
-               "Min evaluation reward": min_reward})
-    with open(f"{experiment_path}/evaluation_rewards.csv", "a") as f:
-        f.write(f"{episode}, {stop_reward}\n")
-    try:
-        if stop_reward > eval_task.spec.reward_threshold * 1.1:  # x 1.1 because of small eval_episodes
-            print(f"Environment solved after {episode} episodes")
-            return True
-    except Exception as e:
-        if stop_reward > -120:
-            print(f"Environment solved after {episode} episodes")
-            return True
+
+        print(f"Episode: {episode} | Average evaluation reward: {avg_reward} | Min evaluation reward: {min_reward}"
+              f" | Max evaluation reward: {max_reward}")
+
+        wandb.log({"Validation after episode": episode,  "Average evaluation reward": avg_reward,
+                   "Min evaluation reward": min_reward, "Max evaluation reward": max_reward})
+
+        with open(f"{experiment_path}/evaluation_rewards.csv", "a") as f:
+            f.write(f"{episode}, {stop_reward}\n")
+        try:
+            if stop_reward > eval_task.spec.reward_threshold * 1.1:  # x 1.1 because of small eval_episodes
+                # print(f"Environment solved after {episode} episodes")
+                return True
+        except Exception as e:
+            if stop_reward > -120:
+                # print(f"Environment solved after {episode} episodes")
+                print(f"Exception handled. Stop reward is: {stop_reward}")
+                return True
+
     return False
+
 
 def get_agent_from_run_cfg(run_cfg):
     agent_args = run_cfg['agent']

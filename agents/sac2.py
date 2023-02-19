@@ -25,7 +25,6 @@ class SACAgent2(SACAgent):
             
         super().__init__(**kwargs)
 
-
         self.alpha = kwargs["alpha"]
 
     def compute_loss_q(self, obs, actions, rewards, new_obs, done):
@@ -100,6 +99,7 @@ class SACAgent2(SACAgent):
         #     p.requires_grad = True
         # for p in self.q_2.parameters():
         #     p.requires_grad = True
+        self.update_target_network()
 
         return loss_results
 
@@ -124,7 +124,6 @@ class SACAgent2(SACAgent):
     def save_agent(self, save_path):
         if not os.path.exists(save_path):
             os.mkdir(save_path)
-
 
         critic_1_path = os.path.join(save_path, "q_1_network.pth")
         torch.save(self.q_1.state_dict(), critic_1_path)

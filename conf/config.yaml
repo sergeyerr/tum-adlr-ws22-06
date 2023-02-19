@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - agent: pearl
+  - agent: sac2
   - optional training: ${agent}
   - optional validation: ${agent}
   - optional sweep: ${agent}
@@ -8,53 +8,55 @@ defaults:
 
 agent:
 # modify the name!
-  experiment_name: "${agent.name}_default_env"
+  experiment_name: "${agent.name}"
+
+  
 
 training:
-  pass_env_parameters: False
+  n_train_tasks: 100
+  pass_env_parameters: True
+  ood: True
   random: True
-  episodes: 10000
-  episode_length: 1000
-  update_after: 1000
-  start_steps: 1000
-  update_every: 1
-  train_batches: 1
-  batch_size: 64
-  min_replay_size: 1000
-  replay_buffer_size: 1000000
+  episodes: 1000
+  num_initial_steps: 1000 # number of transitions collected per task before training
+  num_train_steps_per_itr: 100 # 2000
+  num_tasks_sample: 10 # number of randomly sampled tasks to collect data for each iteration
   seed: 0
   noise: 'Ornstein' #'Zero','Gaussian', 'Ornstein'
   noise_param: 0.2
+  max_path_length: 1000 #200 max path length for this environment
+  abort_training_after: 80 # if average reward does not increase for abort_training_after many episodes, abort training
+
 
 validation:
-  log_model_wandb: True
-  log_model_every_training_batch: 1000
+  use_wandb: True
+  # legacy
+  log_model_wandb: False
 
   # hypercube validation is not possible (it makes no sense), if env is NOT random 
   hypercube_validation: True
-  hypercube_points_per_axis: 3 
+  hypercube_points_per_axis: 3 # maybe it makes sense to have 4 points on gravity axis, to not only test the extremes
   # eval_eps will be calculated automatically in case of hypercube validation
   eval_eps: 1 #50
   n_eval_tasks: 5 #in case of hypecube validation this will be overwritten by hypercube_points_per_axis
 
-  
-  eval_stop_condition: 'min' # 'min', 'avg': how results from eval_eps are aggregated
+  eval_stop_condition: 'min' # 'min', 'avg', 'max': how results from eval_eps are aggregated
   eval_interval: 10
-  record_video_on_eval: True
+  record_video_on_eval: False
   validation_episode_length: 1000
-  validation_traj_num: 1
+  validation_traj_num: 3 # must be larger than num_exp_traj_eval, else pearl cannot collect context to inform the policy
+  num_exp_traj_eval: 1 # must be at least 1 and smaller than validation_traj_num
   log_actions: True
-
-  num_exp_traj_eval: 1
 
 env:
   seed: 0
   deterministic_reset: True
+  random_wind_on_reset: True
   random: True
   random_type: 'Uniform' # 'Uniform', 'Gaussian'
   # if you set any of bounds precisely, there will be the error in validation
-  gravity_lower: -8.0 # -11.999 from -12 to 0
-  gravity_upper: -4.0 # -0.0001 from -12 to 0
+  gravity_lower: -11.999 # -11.999 from -12 to 0
+  gravity_upper: -1.0 # -0.0001 from -12 to 0
   wind_probability: 0.5
   wind_power_lower: 0 # from 0 to 20
   wind_power_upper: 10 # from 0 to 20
@@ -66,6 +68,24 @@ env:
   default_wind: False
   default_wind_power: 0
   default_turbulence_power: 1.5
+
+  out_of_distribution:
+    train:
+      gravity_lower: -4.0 # -11.999 from -12 to 0
+      gravity_upper: -1.0 # -0.0001 from -12 to 0
+      wind_probability: 0.5
+      wind_power_lower: 0 # from 0 to 20
+      wind_power_upper: 2 # from 0 to 20
+      turbulence_power_lower: 0 # from 0 to 2
+      turbulence_power_upper: 0.5  # from 0 to 2
+    eval:
+      gravity_lower: -11.999 # -11.999 from -12 to 0
+      gravity_upper: -7.0 # -0.0001 from -12 to 0
+      wind_probability: 0.5
+      wind_power_lower: 5 # from 0 to 20
+      wind_power_upper: 10 # from 0 to 20
+      turbulence_power_lower: 0.6 # from 0 to 2
+      turbulence_power_upper: 1.0  # from 0 to 2
 
 
 sweep:

@@ -27,6 +27,10 @@ class SACAgent(object):
         self.value = Networks.SACValueNetwork(beta=self.q_lr, input_dims=self.input_dims).to(self.device)
         self.target_value = Networks.SACValueNetwork(beta=self.q_lr, input_dims=self.input_dims).to(self.device)
 
+        # we not backprop thru target network, so we wont need gradients
+        for p in self.target_value.parameters():
+            p.requires_grad = False
+
         # Sync weights
         self.sync_weights()
 
@@ -117,6 +121,8 @@ class SACAgent(object):
         q_loss.backward()
         self.q_1.optimizer.step()
         self.q_2.optimizer.step()
+
+        self.update_target_network()
 
         return loss_results
 

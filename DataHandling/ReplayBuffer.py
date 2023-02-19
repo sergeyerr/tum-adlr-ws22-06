@@ -66,8 +66,6 @@ class MultiTaskReplayBuffer(object):
         out_dict = self.task_buffers[task_id].get_batch(batch_size)
         return out_dict
 
-    # TODO sampling context and sampling sac could be moved here instead
-    # so you can call encoder_replay_buffer.sample_random_batch(indices, sample_context=True)
     def sample_random_batch(self, task_indices, batch_size, sample_context=False, use_next_obs_in_context=False):
         # out dimensions: [(num tasks, batch size, feature_dim) for each feature (observation, action, reward ...)]
         # this is done to ensure that task_indices is iterable even if its just one integer

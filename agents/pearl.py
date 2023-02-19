@@ -66,14 +66,11 @@ class PEARLAgent(SACAgent):
         self.vib_criterion = torch.nn.MSELoss()
         self.l2_reg_criterion = torch.nn.MSELoss()
 
-        ### params used in optimization
+        # params used in optimization
         self.kl_lambda = kwargs["kl_lambda"]
         self.policy_mean_reg_weight = kwargs["policy_mean_reg_weight"]
         self.policy_std_reg_weight = kwargs["policy_std_reg_weight"]
         self.policy_pre_activation_weight = kwargs["policy_pre_activation_weight"]
-        self.num_steps_prior = kwargs["num_steps_prior"]
-        self.num_steps_posterior = kwargs["num_steps_posterior"]
-        self.num_extra_rl_steps_posterior = kwargs["num_extra_rl_steps_posterior"]
         self.embedding_batch_size = kwargs["embedding_batch_size"]
         self.batch_size = kwargs["batch_size"]
 
@@ -91,7 +88,6 @@ class PEARLAgent(SACAgent):
         posteriors = torch.distributions.normal.Normal(self.z_means, torch.sqrt(self.z_vars))
         self.z = posteriors.rsample()
 
-    # TODO as expected this function is incorrect. The sizes dont make sense
     def update_context(self, inputs):
         ''' append single transition to the current context '''
         o, a, r, no = inputs
@@ -102,48 +98,20 @@ class PEARLAgent(SACAgent):
         r = torch.from_numpy(np.array([r])[None, None, ...]).to(device=self.device, dtype=torch.float)
         no = torch.from_numpy(no[None, None, ...]).to(device=self.device, dtype=torch.float)
 
-        # environment returns 1 d arrays
+        # a = tensor([[[*,*]]])
+        # o = tensor([[[*, *, *, *, *, *, *, *]]]) 1,1,8
+        # r = tensor([[[*]]])
         # this concatenates the features along the feature dimension
-        # o = [[[1, 2, 4],
-        #      [1, 2, 4],
-        #      [1, 2, 4]],
-        #     [[1, 2, 4],
-        #      [1, 2, 4],
-        #      [1, 2, 4]]]
-        # a = [[[1, 2],
-        #       [1, 2],
-        #       [1, 2]],
-        #      [[1, 2],
-        #       [1, 2],
-        #       [1, 2]]]
-        # data = [[[1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2]],
-        #         [[1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2]]]
+        # data = tensor([[[*, *, *, *, *, *, *, *, *, *, *]]]) 1,1,11
         if self.use_next_obs_in_context:
             data = torch.cat([o, a, r, no], dim=2)
         else:
             data = torch.cat([o, a, r], dim=2)
-        # this concatenates the context along the batch dimension
-        # context = [[[1, 2, 4, 1, 2], first task
-        #          [1, 2, 4, 1, 2], second transition from first task
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2]],
-        #         [[1, 2, 4, 1, 2], second task
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2],
-        #          [1, 2, 4, 1, 2]]]
+
         if self.context is None:
             self.context = data
         else:
             self.context = torch.cat([self.context, data], dim=1)
-
 
     def compute_kl_div(self):
         ''' compute KL( q(z|c) || r(z) ) '''
@@ -198,6 +166,10 @@ class PEARLAgent(SACAgent):
     # performs one optimization step of agent
     def optimize(self, task_indices):
 
+        # TODO compare this optimization step by step to the optimization done in SAC
+        # TODO implement another optimization that is like in SAC2
+        # TODO how does it work that the context encoder takes variable length context input
+
         # sample context batch
         context = self.encoder_replay_buffer.sample_random_batch(task_indices, batch_size=self.embedding_batch_size,
                                                                  sample_context=True,
@@ -238,22 +210,19 @@ class PEARLAgent(SACAgent):
         # run policy, get log probs and new actions
         in_ = torch.cat([obs, task_z.detach()], dim=1)  # meta_batch*batch_size, obs_dim+latent_dim
 
-        policy_outputs = self.pi.sample_normal(in_, reparameterize=True, return_log_prob=True)
+        policy_outputs = self.pi.sample_normal(in_, reparameterize=True, return_all_outputs=True)
 
         new_actions, policy_mean, policy_log_std, log_pi = policy_outputs[:4]
         # tanh_action, mean, T.log(sigma), log_probs, None, sigma, None, action
 
         # Q and V networks
         # encoder will only get gradients from Q nets
-        # TODO check if concatentation in dim=1 is correct. Also check the SACCriticNetwork
-        #  (in reference the cat with dim 1)
-        # TODO also check if order ob inputs matter. In reference implementation they have o, a, z
         q1_pred = self.q_1(torch.cat([obs, task_z], dim=1), actions)
         q2_pred = self.q_2(torch.cat([obs, task_z], dim=1), actions)
-        v_pred = self.value(torch.cat([obs, task_z.detach()], dim=1))
+        v_pred = self.value(in_)  # like in sac
         # get targets for use in V and Q updates
         with torch.no_grad():
-            target_v_values = self.target_value(torch.cat([next_obs, task_z], dim=1))
+            target_v_values = self.target_value(torch.cat([next_obs, task_z], dim=1))  # like in sac
 
         # KL constraint on z if probabilistic
         self.context_encoder.optimizer.zero_grad()
@@ -266,11 +235,11 @@ class PEARLAgent(SACAgent):
         self.q_2.optimizer.zero_grad()
         rewards_flat = rewards.view(self.batch_size * num_tasks, -1)
         # scale rewards for Bellman update
-        # TODO check self.scale parameter
         rewards_flat = rewards_flat * self.scale
         terms_flat = terms.view(self.batch_size * num_tasks, -1)
-        q_target = rewards_flat + (1. - terms_flat) * self.gamma * target_v_values
-        q_loss = torch.mean((q1_pred - q_target) ** 2) + torch.mean((q2_pred - q_target) ** 2)
+        q_target = rewards_flat + (1. - terms_flat) * self.gamma * target_v_values # like in sac
+        # q1_pred, and q2_pred calculated like in sac
+        q_loss = torch.mean((q1_pred - q_target) ** 2) + torch.mean((q2_pred - q_target) ** 2)  # in sac we do 0.5 infront
         loss_results["critic_loss"] = q_loss.data
         q_loss.backward()
         self.q_1.optimizer.step()
@@ -278,8 +247,8 @@ class PEARLAgent(SACAgent):
         self.context_encoder.optimizer.step()
 
         # compute min Q on the new actions
-        q1 = self.q_1(torch.cat([obs, task_z.detach()], dim=1), new_actions)
-        q2 = self.q_2(torch.cat([obs, task_z.detach()], dim=1), new_actions)
+        q1 = self.q_1(in_, new_actions)  # like in sac
+        q2 = self.q_2(in_, new_actions)  # like in sac
         min_q_new_actions = torch.min(q1, q2)
 
         # vf update
@@ -310,8 +279,8 @@ class PEARLAgent(SACAgent):
         policy_loss.backward()
         self.pi.optimizer.step()
 
+        self.z = self.z.detach()
         return loss_results
-
 
     def save_agent(self, save_path):
         super().save_agent(save_path)
