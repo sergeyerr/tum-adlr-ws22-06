@@ -197,9 +197,7 @@ class CustomLunarLander(gym.Env, EzPickle):
         gravity: float = -10.0,
         enable_wind: bool = False,
         wind_power: float = 15.0,
-        turbulence_power: float = 1.5,
-        separate_random_for_wind= True,
-        separate_random_for_turbulence= True
+        turbulence_power: float = 1.5
     ):
         EzPickle.__init__(
             self,
@@ -235,15 +233,8 @@ class CustomLunarLander(gym.Env, EzPickle):
         self.turbulence_power = turbulence_power
 
         self.enable_wind = enable_wind
-        if separate_random_for_wind:
-            # bad way to set REALLY random seed
-            np.random.seed(int(time.time()))
-            self.wind_idx = np.random.randint(-9999, 9999)
-            
-        if separate_random_for_turbulence:
-            # bad way to set REALLY random seed
-            np.random.seed(int(time.time()))
-            self.torque_idx = np.random.randint(-9999, 9999)
+        self.wind_idx = np.random.randint(-9999, 9999)
+        self.torque_idx = np.random.randint(-9999, 9999)
         
         #return seed back
         np.random.seed(0)

@@ -58,6 +58,17 @@ class DetermenisticResetWrapper(gym.Wrapper):
         
         #return self.env.reset(**kwargs, seed=self.seed)
         return self.env.reset(seed=self.seed)
+    
+    
+class RandomWindWrapper(gym.Wrapper):
+    def __init__(self, env):
+        super().__init__(env)
+    
+    def reset(self, **kwargs):
+        res = self.env.reset()
+        self.env.wind_idx = np.random.randint(-9999, 9999)
+        self.env.torque_idx = np.random.randint(-9999, 9999)
+        return res
 
 
 class StateInjectorWrapper(gym.Wrapper):
