@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - agent: sac2
+  - agent: pearl
   - optional training: ${agent}
   - optional validation: ${agent}
   - optional sweep: ${agent}
@@ -14,7 +14,7 @@ agent:
 
 training:
   n_train_tasks: 100
-  pass_env_parameters: True
+  pass_env_parameters: False
   ood: True
   random: True
   episodes: 500
@@ -50,6 +50,7 @@ validation:
 env:
   seed: 0
   deterministic_reset: True
+  random_wind_on_reset: True
   random: True
   random_type: 'Uniform' # 'Uniform', 'Gaussian'
   # if you set any of bounds precisely, there will be the error in validation

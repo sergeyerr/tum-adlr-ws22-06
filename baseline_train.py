@@ -102,7 +102,7 @@ class BaselineExperiment(object):
 
         # Weights and biases initialization
         if init_wandb:
-            wandb.init(project="ADLR randomized envs", entity="tum-adlr-ws22-06", config=self.cfg)
+            wandb.init(project="ADLR Unified training", entity="tum-adlr-ws22-06", config=self.cfg)
         else:
             wandb.init(mode="disabled")
 
@@ -118,7 +118,7 @@ class BaselineExperiment(object):
                        self.validation_args, noise)
 
         for episode in range(self.general_training_args["episodes"]):
-            episode_reward = 0.0
+            episode_rewards = []
             actor_loss = 0.0
             critic_loss = 0.0
             initial_steps = 0
@@ -136,6 +136,7 @@ class BaselineExperiment(object):
                 while total_steps_per_task < self.training_args["episode_length"]:
                     obs, info = env.reset()
                     # Generate rollout
+                    rollout_reward = 0.0
                     for step in range(self.general_training_args["max_path_length"]):
 
                         # Get actions
@@ -148,7 +149,7 @@ class BaselineExperiment(object):
 
                         # Take step in environment
                         new_obs, reward, done, _, _ = env.step(action)
-                        episode_reward += reward
+                        rollout_reward += reward
 
                         # Store experience
                         self.agent.experience(obs, action, reward, new_obs, done)
@@ -160,8 +161,9 @@ class BaselineExperiment(object):
                         # End episode if done
                         if done:
                             break
+                episode_rewards.append(rollout_reward)
 
-            self.reward_history.append(episode_reward)
+            self.reward_history.append(episode_rewards)
             loss = 0
             if self.agent.replay_buffer.size() > self.training_args["min_replay_size"]:
                 for train_step in range(self.general_training_args["num_train_steps_per_itr"]):
@@ -169,16 +171,21 @@ class BaselineExperiment(object):
                         # Loss information kept for monitoring purposes during training
                         actor_loss += loss['actor_loss']
                         critic_loss += loss['critic_loss']
-                        wandb.log({"Training episode": episode, "Batch": episode * self.general_training_args["num_train_steps_per_itr"] + train_step,
-                                   "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
+                        #wandb.log({"Training episode": episode, "Batch": episode * self.general_training_args["num_train_steps_per_itr"] + train_step,
+                         #          "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
 
+            # average loss over number of batches 
+            actor_loss = actor_loss / self.general_training_args["num_train_steps_per_itr"]
+            critic_loss = critic_loss / self.general_training_args["num_train_steps_per_itr"]
+            
             # log average results and episode result
-            self.log_episode_reward(loss, episode, episode_reward)
+            self.log_episode_reward(actor_loss , critic_loss, episode, episode_rewards)
 
+            # TURNING IT OFF BECAUSE WE DON'T CARE IN CASE OF CLOUD
             # mechanism to abort training if bad convergence
-            if not self.converging(episode):
-                print("breaking due to convergence")
-                break
+            # if not self.converging(episode):
+            #     print("breaking due to convergence")
+            #     break
 
             if episode % self.validation_args["eval_interval"] == 0:
                 solved_all_tests = self.run_test_tasks(episode)
@@ -222,17 +229,21 @@ class BaselineExperiment(object):
         print("evaluation over\n")
         return False
 
-    def log_episode_reward(self, loss, episode, episode_reward):
-        print(f"episode actor loss is: {loss['actor_loss']} \t episode critic loss is: {loss['critic_loss']}")
-        print(f"Training episode: {episode} Episode reward: {episode_reward}"
-              f" Average reward: {np.mean(self.reward_history)}")
-        wandb.log({"Training episode": episode, "Episode reward": episode_reward,
-                   "Average reward": np.mean(self.reward_history)})
-        print("wandb logging successful")
-
+    def log_episode_reward(self, actor_loss , critic_loss, episode, episode_rewards, reward_threshold = 200):
+        min_r = np.min(episode_rewards)
+        q_25 = np.quantile(episode_rewards, 0.25)
+        q_50 = np.quantile(episode_rewards, 0.5)
+        q_75 = np.quantile(episode_rewards, 0.75)
+        max_r = np.max(episode_rewards)
+        solved_training_tasks = (np.array(episode_rewards) > reward_threshold).sum()
+        print(f"Training episode: {episode} Min reward: {min_r} Q25 reward: {q_25} Q50 reward: {q_50} Q75 reward: {q_75} Max reward: {max_r} solved training tasks: {solved_training_tasks} actor loss: {actor_loss} critic loss: {critic_loss}")
+        wandb.log({"Training episode": episode, "Min reward": min_r, "Q25 reward": q_25, "Q50 reward": q_50, "Q75 reward": q_75, "Max reward": max_r, "Solved training tasks": solved_training_tasks, actor_loss: actor_loss, critic_loss: critic_loss})
+        
+        
     def converging(self, episode):
         # mechanism to abort training if bad convergence
-        if self.last_avg_reward >= np.mean(self.reward_history):
+        
+        if self.last_avg_reward >= np.mean(np.array(self.reward_history).reshape(-1)):
             self.no_convergence_counter += 1
             print(f"convergence counter increased to: {self.no_convergence_counter}\n")
             print(f"threshold is: {self.general_training_args['abort_training_after']}")
@@ -249,7 +260,8 @@ class BaselineExperiment(object):
                 return True
         else:
             self.no_convergence_counter = 0
-            self.last_avg_reward = np.mean(self.reward_history)
+            # mean of rewards over last episode
+            self.last_avg_reward = np.mean(self.reward_history[-1])
             print(f"convergence counter decreased to: {self.no_convergence_counter}")
             print("_______________________________________________________________\n\n\n")
             return True

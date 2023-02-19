@@ -28,8 +28,6 @@ class PEARLExperiment(BaselineExperiment):
         self.agent_name = "pearl"
         self.training_args = cfg["training"]
         self.agent_args = cfg["agent"]
-
-        self.episode_reward = 0.0
         self.task_idx = 0
 
     def run(self, **kwargs):
@@ -64,7 +62,7 @@ class PEARLExperiment(BaselineExperiment):
 
         # Weights and biases initialization
         if init_wandb:
-            wandb.init(project="ADLR randomized envs with Meta RL", entity="tum-adlr-ws22-06", config=self.cfg)
+            wandb.init(project="ADLR Unified training", entity="tum-adlr-ws22-06", config=self.cfg)
         else:
             wandb.init(mode="disabled")
 
@@ -83,7 +81,7 @@ class PEARLExperiment(BaselineExperiment):
         # meta-training loop
         # at each iteration, we first collect data from tasks, perform meta-updates, then try to evaluate
         for episode in range(self.general_training_args["episodes"]):
-
+            self.episode_rewards = []
             if episode == 0:
                 print('collecting initial pool of data for train and eval')
                 for idx, env in enumerate(self.train_tasks):
@@ -92,15 +90,13 @@ class PEARLExperiment(BaselineExperiment):
                     self.roll_out(self.general_training_args["num_initial_steps"], 1, np.inf, explore=True)
 
             # Sample data from train tasks.
-            actor_loss = 0.0
-            critic_loss = 0.0
-            self.episode_reward = 0.0
             print('Sample data from train tasks')
             for i in range(self.general_training_args["num_tasks_sample"]):
                 idx = np.random.randint(self.general_training_args["n_train_tasks"])
                 self.task_idx = idx
                 env = self.train_tasks[idx]
                 env.reset()
+                #print(env.wind_idx, env.torque_idx)
 
                 gravity, enable_wind, wind_power, turbulence_power = env.gravity, env.enable_wind, \
                     env.wind_power, env.turbulence_power
@@ -122,10 +118,13 @@ class PEARLExperiment(BaselineExperiment):
                 if self.training_args["num_steps_posterior"] > 0:
                     self.roll_out(self.training_args["num_steps_posterior"], 1, self.training_args["update_post_train"])
 
-            self.reward_history.append(self.episode_reward)
+            self.reward_history.append(self.episode_rewards)
 
             print("Sample train tasks and compute gradient updates on parameters.")
             loss = 0
+            
+            actor_loss = 0.0
+            critic_loss = 0.0
             for train_step in range(self.general_training_args["num_train_steps_per_itr"]):
                 indices = np.random.choice(self.general_training_args["n_train_tasks"], self.training_args["meta_batch"])
                 loss = self.agent.optimize(indices)
@@ -133,15 +132,19 @@ class PEARLExperiment(BaselineExperiment):
                 actor_loss += loss['actor_loss']
                 critic_loss += loss['critic_loss']
 
-                wandb.log({"Training episode": episode, "Batch": episode * self.general_training_args["num_train_steps_per_itr"] + train_step,
-                           "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
+                #wandb.log({"Training episode": episode, "Batch": episode * self.general_training_args["num_train_steps_per_itr"] + train_step,
+                       #    "train_actor_loss": loss['actor_loss'], "train_critic_loss": loss['critic_loss']})
 
-            self.log_episode_reward(loss, episode, self.episode_reward)
+            # averaging per number of batches
+            actor_loss /= self.general_training_args["num_train_steps_per_itr"]
+            critic_loss /= self.general_training_args["num_train_steps_per_itr"]
+            self.log_episode_reward( actor_loss , critic_loss, episode, self.episode_rewards)
 
+            # TURNING IT OFF BECAUSE WE DON'T CARE IN CASE OF CLOUD
             # mechanism to abort training if bad convergence
-            if not self.converging(episode):
-                print("breaking due to convergence")
-                break
+            # if not self.converging(episode):
+            #     print("breaking due to convergence")
+            #     break
 
             if episode % self.validation_args["eval_interval"] == 0:
                 solved_all_tests = self.run_test_tasks(episode, pearl=True)
@@ -159,9 +162,7 @@ class PEARLExperiment(BaselineExperiment):
         num_trajs = 0
         paths = []
         env = self.train_tasks[self.task_idx]
-
         while total_num_samples < num_samples:
-
             observations = []
             actions = []
             rewards = []
@@ -173,6 +174,7 @@ class PEARLExperiment(BaselineExperiment):
                 self.agent.sample_z()
             # inner most loop
             # here we interact with the environment
+            rollout_reward = 0.0
             for step in range(self.general_training_args["max_path_length"]):
                 if explore:
                     a = env.action_space.sample()
@@ -184,11 +186,12 @@ class PEARLExperiment(BaselineExperiment):
                 terminals.append(d)
                 actions.append(a)
                 o = next_o
-                self.episode_reward += r
+                rollout_reward += r
                 total_num_samples += 1
 
                 if d:
                     break
+            self.episode_rewards.append(rollout_reward)
 
             num_trajs += 1
 
