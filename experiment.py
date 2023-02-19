@@ -17,7 +17,7 @@ import wandb
 from Noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, ZeroNoise
 from agents import DDPGAgent, SACAgent, SACAgent2
 
-from utils import print_run_info, validate
+from utils import print_run_info, validate_task
 from pearl_train import PEARLExperiment
 from baseline_train import BaselineExperiment
 
@@ -101,7 +101,7 @@ def experiment(cfg: DictConfig):
     else:
         experiment = BaselineExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
         
-    experiment.run(init_wandb=False, ood=training_args['ood'], pass_params=training_args['pass_env_parameters'])
+    experiment.run(init_wandb=validation_args['use_wandb'], ood=training_args['ood'], pass_params=training_args['pass_env_parameters'])
     
     # sac_experiment = BaselineExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
 

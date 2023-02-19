@@ -17,7 +17,7 @@ from Noise import ZeroNoise
 import wandb
 from agents import PEARLAgent
 
-from utils import print_run_info, validate
+from utils import print_run_info, validate_task
 from baseline_train import BaselineExperiment
 
 
@@ -68,7 +68,7 @@ class PEARLExperiment(BaselineExperiment):
 
         if self.validation_args["log_model_wandb"]:
             # assumes that the model has only one actor, we may also log different models differently
-            wandb.watch(self.agent.pi, log="all", log_freq=self.validation_args["log_model_every_training_batch"])
+            #wandb.watch(self.agent.pi, log="all", log_freq=self.validation_args["log_model_every_training_batch"])
             temp = self.validation_args["log_model_every_training_batch"]
             print(
                 f"================= {f'Sending weights to W&B every {temp} batch'} =================")

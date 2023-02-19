@@ -17,7 +17,7 @@ import wandb
 from Noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, ZeroNoise
 from agents import DDPGAgent, SACAgent, SACAgent2
 
-from utils import print_run_info, validate
+from utils import print_run_info, validate_task
 
 
 class BaselineExperiment(object):
@@ -215,13 +215,26 @@ class BaselineExperiment(object):
         os.mkdir(os.path.join(self.agent_experiment_path, "saves"))
 
     def run_test_tasks(self, episode, pearl=False):
+        # this really mixed up with the validation function
         print("starting evaluation")
         for task_id, eval_task in enumerate(self.eval_tasks):
-            solved = validate(self.agent, self.validation_args, self.agent_experiment_path, episode, eval_task, task_id, pearl)
+            solved = validate_task(self.agent, self.validation_args, self.agent_experiment_path, episode, eval_task, task_id, pearl)
             if solved:
                 print(f"{self.agent_name} solved task {task_id} in episode {episode}!!")
                 self.solved_tasks[task_id] = solved
                 self.solved_episodes[task_id] += f", {episode}"
+        
+        # saving model only once
+        save_path = os.path.join(self.agent_experiment_path, "saves")
+
+        self.agent.save_agent(save_path)
+
+        art = wandb.Artifact("lunar_lander_model", type="model", metadata={"episode": episode, "agent_name": self.agent_name})
+        for f in os.listdir(save_path):
+            art.add_file(os.path.join(save_path, f))
+        wandb.log_artifact(art)
+        
+        
 
         if all(self.solved_tasks):
             print(f"{self.agent_name} solved all tasks (but not necessarily in a row)!!")
@@ -237,7 +250,7 @@ class BaselineExperiment(object):
         max_r = np.max(episode_rewards)
         solved_training_tasks = (np.array(episode_rewards) > reward_threshold).sum()
         print(f"Training episode: {episode} Min reward: {min_r} Q25 reward: {q_25} Q50 reward: {q_50} Q75 reward: {q_75} Max reward: {max_r} solved training tasks: {solved_training_tasks} actor loss: {actor_loss} critic loss: {critic_loss}")
-        wandb.log({"Training episode": episode, "Min reward": min_r, "Q25 reward": q_25, "Q50 reward": q_50, "Q75 reward": q_75, "Max reward": max_r, "Solved training tasks": solved_training_tasks, actor_loss: actor_loss, critic_loss: critic_loss})
+        wandb.log({"Training episode": episode, "Min reward": min_r, "Q25 reward": q_25, "Q50 reward": q_50, "Q75 reward": q_75, "Max reward": max_r, "Solved training tasks": solved_training_tasks, "actor_loss": actor_loss, "critic_loss": critic_loss})
         
         
     def converging(self, episode):
