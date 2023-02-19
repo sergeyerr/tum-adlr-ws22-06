@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - agent: pearl
+  - agent: sac2
   - optional training: ${agent}
   - optional validation: ${agent}
   - optional sweep: ${agent}
@@ -14,13 +14,13 @@ agent:
 
 training:
   n_train_tasks: 100
-  pass_env_parameters: False
+  pass_env_parameters: True
   ood: True
   random: True
-  episodes: 500
+  episodes: 1000
   num_initial_steps: 1000 # number of transitions collected per task before training
   num_train_steps_per_itr: 100 # 2000
-  num_tasks_sample: 5 # number of randomly sampled tasks to collect data for each iteration
+  num_tasks_sample: 10 # number of randomly sampled tasks to collect data for each iteration
   seed: 0
   noise: 'Ornstein' #'Zero','Gaussian', 'Ornstein'
   noise_param: 0.2
