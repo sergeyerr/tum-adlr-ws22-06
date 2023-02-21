@@ -21,9 +21,6 @@ from utils import print_run_info, validate_task
 from pearl_train import PEARLExperiment
 from baseline_train import BaselineExperiment
 
-# TODO write a parser that takes as input a txt file with specifications on the experiment like:
-#  pearl ood, sac ood, sac pass_param ood, sac, pearl, sac pass_param
-#  and translates that into an experiment
 
 # TODO increase max path length with each episode? It seems like pearl takes to long to solve a task. The trajectory
 #  is simply cut off because it is longer than max path length (but we do not give negative reward). So the agent
