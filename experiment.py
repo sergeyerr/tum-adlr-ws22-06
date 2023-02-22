@@ -22,7 +22,6 @@ from pearl_train import PEARLExperiment
 from pearl_2_train import PEARLE2xperiment
 from baseline_train import BaselineExperiment
 
-
 # TODO increase max path length with each episode? It seems like pearl takes to long to solve a task. The trajectory
 #  is simply cut off because it is longer than max path length (but we do not give negative reward). So the agent
 #  is maybe learning to take a long time to land... maybe we should either prolong the path length to make pearl land

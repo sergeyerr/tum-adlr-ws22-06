@@ -214,6 +214,7 @@ class BaselineExperiment(object):
         os.mkdir(self.agent_experiment_path)
         os.mkdir(os.path.join(self.agent_experiment_path, "saves"))
 
+
     def run_test_tasks(self, episode, pearl=False, pearl_2= False):
         # this really mixed up with the validation function
         print("starting evaluation")
