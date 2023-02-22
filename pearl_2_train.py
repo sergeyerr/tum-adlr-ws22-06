@@ -136,7 +136,7 @@ class PEARLE2xperiment(BaselineExperiment):
             #     break
 
             if episode % self.validation_args["eval_interval"] == 0:
-                solved_all_tests = self.run_test_tasks(episode, pearl=True)
+                solved_all_tests = self.run_test_tasks(episode, pearl=False, pearl_2=True)
                 if solved_all_tests:
                     break
 

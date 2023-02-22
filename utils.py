@@ -58,12 +58,15 @@ def print_run_info(env, agent, agent_args, training_args, env_args, validation_a
     print(f"================= {'Begin Training'.center(30)} =================")
 
 
-def validate_task(agent, validation_args, experiment_path, episode, in_eval_task, task_id, pearl=False):
+def validate_task(agent, validation_args, experiment_path, episode, in_eval_task, task_id, pearl=False, pearl_2=False):
 
     '''
     doing all the validation stuff + logging
     returns, whether the env is solved
     '''
+    if pearl and pearl_2:
+        raise Exception("Pearl and Pearl2 cannot be both True")
+    
     stop_reward = []
 
     gravity, enable_wind, wind_power, turbulence_power = in_eval_task.gravity, in_eval_task.enable_wind,\
@@ -87,7 +90,7 @@ def validate_task(agent, validation_args, experiment_path, episode, in_eval_task
             #rewards_steps = []
 
         # each episode clear the memory
-        if pearl:
+        if pearl and not pearl_2:
             agent.clear_z()
 
         for traj in range(validation_traj_num):
@@ -126,17 +129,36 @@ def validate_task(agent, validation_args, experiment_path, episode, in_eval_task
                 agent.infer_posterior(agent.context)
 
             obs, info = eval_task.reset()
+            
+            observations_list = []
+            actions_list = []
+            rewards_list = []
 
             for step in range(validation_episode_length):
 
                 # Get deterministic action
                 with T.no_grad():
-                    action = agent.action(obs, addNoise=False)
+                    if not pearl_2:
+                        action = agent.action(obs, addNoise=False)
+                    else:
+                        context_size = agent.context_size
+                        if step != 0:
+                            number_of_samples = len(observations_list[-context_size:])
+                            o_tensor = torch.Tensor(np.array(observations_list[-context_size:])).reshape(number_of_samples, -1)
+                            a_tensor = torch.Tensor(np.array(actions_list[-context_size:])).reshape(number_of_samples, -1)
+                            r_tensor = torch.Tensor(np.array(rewards_list[-context_size:])).reshape(number_of_samples, -1)
+                            context = torch.cat([o_tensor, a_tensor, r_tensor], dim=1)
+                            action = agent.action(obs, [context], addNoise=False)
+                        else:
+                            action = agent.action(obs, [torch.empty(0, agent.encoder_in_size)], addNoise=False)
 
                 # Take step in environment
                 new_obs, reward, done, _, _ = eval_task.step(action)
+                observations_list.append(obs)
+                rewards_list.append(reward)
+                actions_list.append(action)
 
-                if pearl:
+                if pearl and not pearl_2:
                     agent.update_context([obs, action, reward, new_obs])
 
                 # Update obs

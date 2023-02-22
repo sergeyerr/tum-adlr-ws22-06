@@ -247,8 +247,8 @@ class ContextEncoder(nn.Module):
         self.z_layer = nn.Linear(self.fc3_dims, self.out_size)
 
         self.optimizer = optim.Adam(self.parameters(), lr=alpha)
-        self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
-
+        #self.device = T.device('cuda:0' if T.cuda.is_available() else 'cpu')
+        self.device = 'cpu'
         self.to(self.device)
 
     def forward(self, context):

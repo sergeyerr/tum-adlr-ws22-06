@@ -127,11 +127,11 @@ class RunsReplayBuffer(object):
         for run_sample in run_samples:
             obs_idx = choice(range(len(run_sample[0])))
             context_dict = dict()
-            context_dict['o'] = np.array(run_sample[0][obs_idx - self.context_size:obs_idx])
-            context_dict['a'] = np.array(run_sample[1][obs_idx - self.context_size:obs_idx])
-            context_dict['r'] = np.array(run_sample[2][obs_idx - self.context_size:obs_idx])
-            context_dict['o2'] = np.array(run_sample[3][obs_idx - self.context_size:obs_idx])
-            context_dict['d'] = np.array(run_sample[4][obs_idx - self.context_size:obs_idx])
+            context_dict['o'] = np.array(run_sample[0][max(obs_idx - self.context_size, 0):obs_idx])
+            context_dict['a'] = np.array(run_sample[1][max(obs_idx - self.context_size, 0):obs_idx])
+            context_dict['r'] = np.array(run_sample[2][max(obs_idx - self.context_size, 0):obs_idx])
+            #context_dict['o2'] = np.array(run_sample[3][obs_idx - self.context_size:obs_idx])
+            #context_dict['d'] = np.array(run_sample[4][obs_idx - self.context_size:obs_idx])
             observation_samples['o'].append(run_sample[0][obs_idx])
             observation_samples['a'].append(run_sample[1][obs_idx])
             observation_samples['r'].append(run_sample[2][obs_idx])
@@ -181,13 +181,15 @@ class MultiTaskRunsReplayBuffer(object):
         out = []
         out_context = []
         for idx in task_indices:
-            context, observations = self.random_batch(idx, batch_size)
+            task_contexts, observations = self.random_batch(idx, batch_size)
             out.append(observations)
-            out_context.append(context)
+            out_context.append(task_contexts)
+        # out context shape: (num_tasks list, batch_size x dict x context length x dim (reward/action/obs))
+        
         # out has now following form:[dict1, dict2, ...] with num_tasks many dicts
         # each dict is: {"o":[[*,*,*,*,*], [*,*,*,*,*], [*,*,*,*,*]], "a":[[*,*], [*,*], [*,*]], "r"...]
         # each key has a nested list as value with dim(batch_size, feature_dim)
-        outer_list = []
+        per_task_list = []
         inner_list = []
         # make list of torch tensors, same structure as out
         context_list = []
@@ -197,33 +199,33 @@ class MultiTaskRunsReplayBuffer(object):
             inner_list.clear()
             for k, v in dictionary.items():
                 inner_list.append(torch.tensor(v))
-            outer_list.append(inner_list)
+            per_task_list.append(inner_list)
             
             
             
             
         # outer_list has now following structure: [[tensor(batch_size, obs_dim), tensor(batch_size, act_dim)], ...]
-        outer_list = [[x[i][None, ...] for x in outer_list] for i in range(len(outer_list[0]))]
+        per_task_list = [[x[i][None, ...] for x in per_task_list] for i in range(len(per_task_list[0]))]
         # outer_list now consists of lists each holding same feature from different tasks as tensors
         # the [None, ...] operations makes sure that in the following contactenation we receive a 3 dimensonal tensor
-        out = [torch.cat(x, dim=0) for x in outer_list]
+        out = [torch.cat(x, dim=0) for x in per_task_list]
         
         # out dimensions: [(num tasks, batch size, feature_dim) for each feature (observation, action, reward ...)]
         # if we are sampling the context the output dimension is
         # tensor(num_tasks, batch_size, all_feature_dim_concatenated)  all_feature_dim_concatenated = 11
         
         
-        for context in out_context:
-          inner_list = []
-          outer_list = [] 
-          for dictionary in context:
-            inner_list.clear()
-            for k, v in dictionary.items():
-                inner_list.append(torch.tensor(v))
-            outer_list.append(inner_list)
-          outer_list = [[x[i][None, ...] for x in outer_list] for i in range(len(outer_list[0]))]
-          tmp = [torch.cat(x, dim=0) for x in outer_list]
-          context_list.append(tmp)
+        for task_contexts in out_context:
+          per_task_list = [] 
+          for dictionary in task_contexts:
+            o = torch.tensor(dictionary['o'])
+            a = torch.tensor(dictionary['a'])
+            r = torch.tensor(dictionary['r'])
+            
+            per_task_list.append(torch.cat((o, a, r), dim=1))
+          # not need to concatenate contexts for one task! 
+          # final shape tasks (list) X batch_size (list) X tensor (length of context X feature_dim)
+          context_list.append(per_task_list)
               
             
         return out, context_list

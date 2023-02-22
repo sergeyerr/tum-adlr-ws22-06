@@ -41,10 +41,10 @@ class PEARLAgent2(SACAgent):
         self.latent_dim = latent_dim
         self.device = torch.device("cpu")
         self.pi = Networks.SACActorNetwork(alpha=alpha, input_dims=policy_input_dims,
-                                               max_action=kwargs["max_action"]).to(self.device)
+                                               max_action=kwargs["max_action"])
         # TODO understand how the encoding actually works if encoder has no bottleneck architecture
         self.context_encoder = Networks.ContextEncoder(alpha=alpha, input_size=encoder_in_size,
-                                                       out_size=encoder_out_size).to(self.device)
+                                                       out_size=encoder_out_size)
 
         # TODO check what these lines actually do. Can omit them?
         # self.register_buffer('z', torch.zeros(1, self.latent_dim))
@@ -183,6 +183,8 @@ class PEARLAgent2(SACAgent):
         rewards = rewards.to(dtype=torch.float, device=self.device)  # .view((-1, 1))
         next_obs = next_obs.to(dtype=torch.float, device=self.device)
         terms = terms.to(dtype=torch.float, device=self.device)  # .view((-1, 1))
+        # flatten nested list of contexts
+        contexts = [context for task_context in contexts for context in task_context]
 
         # flattens out the task dimension
         t, b, _ = obs.size()  # meta_batch, batch_size, obs_dim=8
@@ -193,7 +195,7 @@ class PEARLAgent2(SACAgent):
         # run inference in networks
         self.infer_posterior(contexts)
         self.sample_z()
-        task_z = self.z.to(self.device)  # shape (sampled_context, latent_dim) meaning for context one z
+        task_z = self.z # shape (sampled_context, latent_dim) meaning for context one z
 
 
         # run policy, get log probs and new actions
