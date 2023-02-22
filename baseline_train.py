@@ -214,11 +214,12 @@ class BaselineExperiment(object):
         os.mkdir(self.agent_experiment_path)
         os.mkdir(os.path.join(self.agent_experiment_path, "saves"))
 
-    def run_test_tasks(self, episode, pearl=False):
+
+    def run_test_tasks(self, episode, pearl=False, pearl_2= False):
         # this really mixed up with the validation function
         print("starting evaluation")
         for task_id, eval_task in enumerate(self.eval_tasks):
-            solved = validate_task(self.agent, self.validation_args, self.agent_experiment_path, episode, eval_task, task_id, pearl)
+            solved = validate_task(self.agent, self.validation_args, self.agent_experiment_path, episode, eval_task, task_id, pearl, pearl_2=pearl_2)
             if solved:
                 print(f"{self.agent_name} solved task {task_id} in episode {episode}!!")
                 self.solved_tasks[task_id] = solved

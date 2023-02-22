@@ -8,7 +8,8 @@ class SACAgent(object):
     def __init__(self, **kwargs):
 
         # Device
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        #self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = 'cpu'
 
         self.pi_lr = kwargs["pi_lr"]
         self.q_lr = kwargs["q_lr"]

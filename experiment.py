@@ -19,11 +19,8 @@ from agents import DDPGAgent, SACAgent, SACAgent2
 
 from utils import print_run_info, validate_task
 from pearl_train import PEARLExperiment
+from pearl_2_train import PEARLE2xperiment
 from baseline_train import BaselineExperiment
-
-# TODO write a parser that takes as input a txt file with specifications on the experiment like:
-#  pearl ood, sac ood, sac pass_param ood, sac, pearl, sac pass_param
-#  and translates that into an experiment
 
 # TODO increase max path length with each episode? It seems like pearl takes to long to solve a task. The trajectory
 #  is simply cut off because it is longer than max path length (but we do not give negative reward). So the agent
@@ -96,7 +93,9 @@ def experiment(cfg: DictConfig):
 
     # SAC experiment
     #config_dict["agent"]["name"] = "sac"
-    if (config_dict['agent']['name'] == 'pearl'):
+    if config_dict['agent']['name'] == 'pearl2':
+        experiment = PEARLE2xperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
+    elif config_dict['agent']['name'] == 'pearl':
         experiment = PEARLExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
     else:
         experiment = BaselineExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
