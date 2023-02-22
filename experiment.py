@@ -19,6 +19,7 @@ from agents import DDPGAgent, SACAgent, SACAgent2
 
 from utils import print_run_info, validate_task
 from pearl_train import PEARLExperiment
+from pearl_2_train import PEARLE2xperiment
 from baseline_train import BaselineExperiment
 
 
@@ -93,7 +94,9 @@ def experiment(cfg: DictConfig):
 
     # SAC experiment
     #config_dict["agent"]["name"] = "sac"
-    if (config_dict['agent']['name'] == 'pearl'):
+    if config_dict['agent']['name'] == 'pearl2':
+        experiment = PEARLE2xperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
+    elif config_dict['agent']['name'] == 'pearl':
         experiment = PEARLExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)
     else:
         experiment = BaselineExperiment(config_dict, train_tasks_array, eval_tasks_array, experiment_path)

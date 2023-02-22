@@ -17,14 +17,14 @@
 
 from .sac import SACAgent
 import Networks
-from DataHandling.ReplayBuffer import MultiTaskReplayBuffer
+from DataHandling.ReplayBuffer import MultiTaskRunsReplayBuffer
 import torch
 import torch.nn.functional as F
 import numpy as np
 import os
 
 
-class PEARLAgent(SACAgent):
+class PEARLAgent2(SACAgent):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -35,10 +35,11 @@ class PEARLAgent(SACAgent):
         # TODO check if encoder in size is correct. I could be that this size is for the recurrent encoder
         encoder_in_size = kwargs["obs_dim"] + kwargs["n_actions"] + 1  # 1 is reward dimension
         encoder_in_size = encoder_in_size + kwargs["obs_dim"] if kwargs["use_next_obs_in_context"] else encoder_in_size
+        self.encoder_in_size = encoder_in_size
         encoder_out_size = latent_dim * 2 if kwargs['use_information_bottleneck'] else latent_dim
         policy_input_dims = kwargs["obs_dim"] + latent_dim
-        self.use_next_obs_in_context = kwargs["use_next_obs_in_context"]
         self.latent_dim = latent_dim
+        self.device = torch.device("cpu")
         self.pi = Networks.SACActorNetwork(alpha=alpha, input_dims=policy_input_dims,
                                                max_action=kwargs["max_action"]).to(self.device)
         # TODO understand how the encoding actually works if encoder has no bottleneck architecture
@@ -55,11 +56,9 @@ class PEARLAgent(SACAgent):
         self.z = None
         self.context = None
 
-        self.clear_z()
 
         # stores experience
-        self.replay_buffer = MultiTaskReplayBuffer(capacity, num_tasks)
-        #self.encoder_replay_buffer = MultiTaskReplayBuffer(capacity, num_tasks)
+        self.replay_buffer = MultiTaskRunsReplayBuffer(capacity, num_tasks)
 
         self.qf_criterion = torch.nn.MSELoss()
         self.vf_criterion = torch.nn.MSELoss()
@@ -71,47 +70,14 @@ class PEARLAgent(SACAgent):
         self.policy_mean_reg_weight = kwargs["policy_mean_reg_weight"]
         self.policy_std_reg_weight = kwargs["policy_std_reg_weight"]
         self.policy_pre_activation_weight = kwargs["policy_pre_activation_weight"]
-        self.embedding_batch_size = kwargs["embedding_batch_size"]
+        self.context_size = kwargs["context_size"]
         self.batch_size = kwargs["batch_size"]
 
-
-    def clear_z(self, num_tasks=1):
-        # reset distribution over z to prior
-        mu = torch.zeros(num_tasks, self.latent_dim)
-        var = torch.ones(num_tasks, self.latent_dim)
-        self.z_means = mu
-        self.z_vars = var
-        self.sample_z()
-        self.context = None
 
     def sample_z(self):
         posteriors = torch.distributions.normal.Normal(self.z_means, torch.sqrt(self.z_vars))
         self.z = posteriors.rsample()
 
-    def update_context(self, inputs):
-        ''' append single transition to the current context '''
-        o, a, r, no = inputs
-
-        # These operations expand the dimensions of the arrays by two
-        o = torch.from_numpy(o[None, None, ...]).to(device=self.device, dtype=torch.float)
-        a = torch.from_numpy(a[None, None, ...]).to(device=self.device, dtype=torch.float)
-        r = torch.from_numpy(np.array([r])[None, None, ...]).to(device=self.device, dtype=torch.float)
-        no = torch.from_numpy(no[None, None, ...]).to(device=self.device, dtype=torch.float)
-
-        # a = tensor([[[*,*]]])
-        # o = tensor([[[*, *, *, *, *, *, *, *]]]) 1,1,8
-        # r = tensor([[[*]]])
-        # this concatenates the features along the feature dimension
-        # data = tensor([[[*, *, *, *, *, *, *, *, *, *, *]]]) 1,1,11
-        if self.use_next_obs_in_context:
-            data = torch.cat([o, a, r, no], dim=2)
-        else:
-            data = torch.cat([o, a, r], dim=2)
-
-        if self.context is None:
-            self.context = data
-        else:
-            self.context = torch.cat([self.context, data], dim=1)
 
     def compute_kl_div(self):
         ''' compute KL( q(z|c) || r(z) ) '''
@@ -126,21 +92,42 @@ class PEARLAgent(SACAgent):
         kl_div_sum = torch.sum(kl_div)
         return kl_div_sum
 
-    def infer_posterior(self, context):
+    def infer_posterior(self, contexts):
         ''' compute q(z|c) as a function of input context and sample new z from it'''
         # it is important to set dtype=torch.float (means float32) because context is a numpy array with float64
         # and the weight in the linear layer of context_encoder are float32.
-        c = context.to(device=self.device, dtype=torch.float)
-        params = self.context_encoder(c)
-        params = params.view(context.size(0), -1, self.context_encoder.out_size)
-        # with probabilistic z, predict mean and variance of q(z | c)
-        mu = params[:, :, :self.latent_dim]
-        sigma_squared = F.softplus(params[:, :, self.latent_dim:])
-        z_params = [self.product_of_gaussians(m, s) for m, s in zip(torch.unbind(mu), torch.unbind(sigma_squared))]
+        
+        #crop context to context size
+        # context for each task INITIALLY, right now - for each observation. May vary in lenght
+        #CONTEXT IS LIST OF MULTIPLE CONTEXTS, SHOULD BE TENSOR
+        z_params = []
+        for context in contexts:
+            # now it is tensor
+            c = context.to(device=self.device, dtype=torch.float)
+            if c.size(0) != 0:
+                context = context[-self.context_size:]
+                params = self.context_encoder(c)
+                
+                mu = params[:, :self.latent_dim]
+                sigma_squared = F.softplus(params[:,self.latent_dim:])
+            
+            #if length of the given context is less than context size, then we need to pad the context with samples from prior
+                if c.size(0) < self.context_size:
+                    # compute the number of samples we need to draw from prior
+                    to_pad = self.context_size - c.size(0)
+                    # alarm with 1, possible bug
+                    mu = torch.cat((torch.zeros(to_pad, self.latent_dim), mu), dim=0)
+                    sigma_squared = torch.cat((torch.ones(to_pad, self.latent_dim), sigma_squared), dim=0)
+            # all gaussians are prior
+            else:
+                # same ALARM here
+                mu = torch.zeros(self.context_size, self.latent_dim)
+                sigma_squared = torch.ones(self.context_size, self.latent_dim)
+            z_params.append(self.product_of_gaussians(mu, sigma_squared))
+        
         self.z_means = torch.stack([p[0] for p in z_params])
         self.z_vars = torch.stack([p[1] for p in z_params])
 
-        self.sample_z()
 
     def product_of_gaussians(self, mus, s_squared):
         '''compute mu, sigma of product of gaussians'''
@@ -149,10 +136,12 @@ class PEARLAgent(SACAgent):
         mu = sigma_squared * torch.sum(mus / sigmas_squared, dim=0)
         return mu, sigma_squared
 
-    def action(self, observation, addNoise=False, **kwargs):
+    def action(self, observation, context, addNoise=False, **kwargs):
         # sample action from the policy, conditioned on the task embedding
-        z = self.z.to(self.device)
-        obs = torch.from_numpy(observation).type(torch.float).to(self.device)
+        self.infer_posterior(context)
+        self.sample_z()
+        z = self.z
+        obs = torch.from_numpy(observation).type(torch.float)
         obs = obs.view((-1, *obs.shape))  # enlargens by one dimension [*,*,*] -> [[*,*,*]]
         in_ = torch.cat([obs, z], dim=1)
         # with torch.no_grad():
@@ -170,24 +159,25 @@ class PEARLAgent(SACAgent):
         # TODO implement another optimization that is like in SAC2
         # TODO how does it work that the context encoder takes variable length context input
 
-        # sample context batch
-        context = self.encoder_replay_buffer.sample_random_batch(task_indices, batch_size=self.embedding_batch_size,
-                                                                 sample_context=True,
-                                                                 use_next_obs_in_context=self.use_next_obs_in_context)
 
-        # zero out context and hidden encoder state
-        self.clear_z(num_tasks=len(task_indices))
 
         loss_results = {}
         num_tasks = len(task_indices)
 
         # data is (task, batch, feat)
-        obs, actions, rewards, next_obs, terms = self.replay_buffer.sample_random_batch(task_indices,
+        samples, contexts = self.replay_buffer.sample_random_batch(task_indices,
                                                                                         batch_size=self.batch_size)
+        obs, actions, rewards, next_obs, terms = samples
+        
+        
 
         # important step to make sure there are no errors like "found at least two devices, cpu and cuda:0!"
         # or "dtype mismatch"
-        context = context.to(device=self.device, dtype=torch.float)
+        
+        # for each context, infer posterior and sample z's
+        
+        
+        #context = context.to(device=self.device, dtype=torch.float)
         obs = obs.to(dtype=torch.float, device=self.device)
         actions = actions.to(dtype=torch.float, device=self.device)
         rewards = rewards.to(dtype=torch.float, device=self.device)  # .view((-1, 1))
@@ -201,11 +191,10 @@ class PEARLAgent(SACAgent):
         next_obs = next_obs.view(t * b, -1)
 
         # run inference in networks
-        self.infer_posterior(context)
+        self.infer_posterior(contexts)
         self.sample_z()
-        task_z = self.z.to(self.device)  # shape (meta_batch, latent_dim) meaning for each task one z
-        task_z = [z.repeat(b, 1) for z in task_z]
-        task_z = torch.cat(task_z, dim=0)  # now task_z has same first dim as obs, so meta_batch*batch_size, obs_dim
+        task_z = self.z.to(self.device)  # shape (sampled_context, latent_dim) meaning for context one z
+
 
         # run policy, get log probs and new actions
         in_ = torch.cat([obs, task_z.detach()], dim=1)  # meta_batch*batch_size, obs_dim+latent_dim

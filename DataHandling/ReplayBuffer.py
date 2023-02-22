@@ -161,6 +161,10 @@ class MultiTaskRunsReplayBuffer(object):
         self.num_tasks = num_tasks
         self.task_buffers = dict([(idx, RunsReplayBuffer(capacity, context_size)) for idx in range(num_tasks)])
 
+    def add_paths(self, task_idx, paths):
+        for path in paths:
+            self.record_trajectory(task_idx, path['o'], path['a'], path['r'], path['o2'], path['d'])
+
     def record_trajectory(self, task_id, obs, action, reward, new_obs, done):
         self.task_buffers[task_id].record_trajectory(obs, action, reward, new_obs, done)
 
