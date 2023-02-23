@@ -109,7 +109,7 @@ class SACCriticNetwork(nn.Module):
         self.fc1_dims = fc1_dims
         self.fc2_dims = fc2_dims
         self.n_actions = n_actions
-        if isinstance(input_dims, list):
+        if not isinstance(input_dims, int):
             self.input_dims = int(np.prod(input_dims))
 
         self.fc1 = nn.Linear(self.input_dims+n_actions, self.fc2_dims)
@@ -139,7 +139,7 @@ class SACValueNetwork(nn.Module):
             self.input_dims = input_dims
             self.fc1_dims = fc1_dims
             self.fc2_dims = fc2_dims
-            if isinstance(input_dims, list):
+            if not isinstance(input_dims, int):
                 self.input_dims = int(np.prod(input_dims))
 
             self.fc1 = nn.Linear(self.input_dims, self.fc1_dims)
@@ -172,7 +172,7 @@ class SACActorNetwork(nn.Module):
         self.max_action = max_action
         self.reparam_noise = 1e-6
 
-        if isinstance(input_dims, list):
+        if not isinstance(input_dims, int):
             self.input_dims = int(np.prod(input_dims))
 
         self.fc1 = nn.Linear(self.input_dims, self.fc1_dims)
@@ -238,7 +238,7 @@ class ContextEncoder(nn.Module):
         self.fc3_dims = fc3_dims
         self.input_size = input_size  # obs_dim+act_dim+latent_dim = 11
         self.out_size = out_size
-        if isinstance(input_size, list):
+        if not isinstance(input_size, int):
             self.input_size = int(np.prod(input_size))
 
         self.fc1 = nn.Linear(self.input_size, self.fc1_dims)

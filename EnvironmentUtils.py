@@ -113,10 +113,10 @@ class StateInjectorWrapper(gym.Wrapper):
 class LunarEnvFixedFabric:
     '''Parent class for all fabrics'''
     def __init__(self, pass_env_params, render_mode=None, **env_params):
-        self.random_type = env_params['random_type']
+        #self.random_type = env_params['random_type']
         self.pass_env_params = pass_env_params
-        if self.random_type != 'Uniform' and self.random_type != 'Fixed':
-            raise NotImplementedError("Only uniform randomization is supported")
+       # if self.random_type != 'Uniform' and self.random_type != 'Fixed':
+          #  raise NotImplementedError("Only uniform randomization is supported")
         self.gravity_lower = env_params['gravity_lower']
         self.gravity_upper = env_params['gravity_upper']
         self.wind_probability = env_params['wind_probability']

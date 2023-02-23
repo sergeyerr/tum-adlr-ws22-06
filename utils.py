@@ -19,7 +19,7 @@ from EnvironmentUtils import StateInjectorWrapper, LunarEnvRandomFabric, LunarEn
 
 import wandb
 from Noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise, ZeroNoise
-from agents import DDPGAgent, SACAgent, SACAgent2
+from agents import DDPGAgent, SACAgent, SACAgent2, PEARLAgent, PEARLAgent2
 
 
 def print_run_info(env, agent, agent_args, training_args, env_args, validation_args, noise):
@@ -254,8 +254,14 @@ def get_agent_from_run_cfg(run_cfg):
         algorithm = SACAgent
     elif agent_args['name'] == "sac2":
         algorithm = SACAgent2
-    env = LunarEnvFixedFabric(env_params=env_args, pass_env_params=training_args['pass_env_parameters']).generate_env()
-    env_info = {"input_dims":env.observation_space.shape, "n_actions": env.action_space.shape[0], "max_action": env.action_space.high}
+    elif agent_args['name'] == 'pearl':
+        algorithm = PEARLAgent
+    elif agent_args['name'] == 'pearl2':
+        algorithm = PEARLAgent2
+    env = LunarEnvFixedFabric(pass_env_params=training_args['pass_env_parameters'], **env_args).generate_env()
+    env_info = {"input_dims":env.observation_space.shape[0], "n_actions": env.action_space.shape[0], "max_action": env.action_space.high, "obs_dim":env.observation_space.shape[0]}
+    if 'pearl' in agent_args['name']:
+        env_info["input_dims"] = env_info["obs_dim"] + agent_args["latent_size"]
     agent = algorithm(**agent_args, **training_args, **env_info)
     return agent
 
@@ -268,4 +274,12 @@ def load_best_model(agent, run):
     best_model_path = model_artifacts[ind].download()
     agent.load_agent(best_model_path)
     print(f"Best model loaded from {best_model_path} with reward {hist[ind]['Average evaluation reward']}")
+    return agent
+
+
+def load_last_model(agent, run):
+    model_artifacts = [ x for x in  run.logged_artifacts() if x.type == "model" ]
+    best_model_path = model_artifacts[-1].download()
+    agent.load_agent(best_model_path)
+    print(f"Last model loaded from {best_model_path}")
     return agent
